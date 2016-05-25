@@ -1,0 +1,98 @@
+buildscript {
+    repositories {
+        jcenter()
+        mavenCentral()
+        maven { url "https://repo.spring.io/snapshot" }
+        maven { url "https://repo.spring.io/milestone" }
+    }
+
+    dependencies {
+        classpath "io.spring.gradle:dependency-management-plugin:0.5.6.RELEASE"
+    }
+}
+
+allprojects {
+    apply plugin: "io.spring.dependency-management"
+    apply plugin: 'eclipse'
+    apply plugin: 'idea'
+    apply plugin: 'maven'
+
+    idea {
+        module {
+            inheritOutputDirs = false
+            outputDir = file("$buildDir/classes/main/")
+        }
+    }
+
+    group 'com.pungwe.db'
+    version '0.0.1-SNAPSHOT'
+
+    task wrapper(type: Wrapper) {
+        gradleVersion = '2.12'
+    }
+
+    eclipse {
+        classpath {
+            containers.remove('org.eclipse.jdt.launching.JRE_CONTAINER')
+            containers 'org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8'
+        }
+    }
+}
+
+subprojects {
+    repositories {
+        jcenter()
+        mavenCentral()
+        maven { url "https://repo.spring.io/snapshot" }
+        maven { url "https://repo.spring.io/milestone" }
+    }
+
+    apply plugin: 'java'
+    apply plugin: 'jacoco'
+
+    ext {
+        springPlatformVersion = "2.0.1.RELEASE"
+        jacksonVersion = "2.6.3"
+    }
+
+    jacocoTestReport {
+        reports {
+            xml.enabled false
+            csv.enabled false
+            html.destination "${buildDir}/jacocoHtml"
+        }
+    }
+
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+
+    dependencyManagement {
+        imports {
+            mavenBom "io.spring.platform:platform-bom:${springPlatformVersion}"
+        }
+
+        dependencies {
+
+            // FIXME: This might not be needed...
+            dependency "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+            dependency "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}"
+            dependency "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}"
+            dependency "com.fasterxml.jackson.dataformat:jackson-dataformat-smile:${jacksonVersion}"
+
+            dependency 'net.jpountz.lz4:lz4:1.3.0'
+
+            // Templating
+            dependency "com.lyncode:jtwig-spring:3.1.1"
+
+            dependency "joda-time:joda-time:2.9.2"
+
+            // Test
+            dependency "junit:junit:4.12"
+        }
+    }
+
+    dependencies {
+        testCompile "junit:junit"
+        testCompile "org.springframework:spring-test"
+    }
+}

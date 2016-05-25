@@ -1,0 +1,3 @@
+dependencies {
+    compile 'net.jpountz.lz4:lz4'
+}
