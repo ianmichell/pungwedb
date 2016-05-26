@@ -1,3 +1,4 @@
 dependencies {
     compile 'net.jpountz.lz4:lz4'
+    compile 'joda-time:joda-time'
 }
