@@ -20,25 +20,6 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     @Override
-    protected Iterator<Entry<K, V>> descendingIterator(Comparator<? super K> comparator,
-                                                       K low, boolean lowInclusive,
-                                                       K high, boolean highInclusive) {
-        return null;
-    }
-
-    @Override
-    protected Iterator<Entry<K, V>> iterator(Comparator<? super K> comparator,
-                                             K low, boolean lowInclusive,
-                                             K high, boolean highInclusive) {
-        return null;
-    }
-
-    @Override
-    public Set<Entry<K, V>> entrySet() {
-        return null;
-    }
-
-    @Override
     public Entry<K, V> getEntry(K key) {
         return null;
     }
@@ -50,6 +31,11 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     @Override
     public Entry<K, V> replaceEntry(K key, V value) {
+        return null;
+    }
+
+    @Override
+    protected Iterator<Entry<K, V>> iterator(Comparator<? super K> comparator, K low, boolean lowInclusive, K high, boolean highInclusive) {
         return null;
     }
 
@@ -68,5 +54,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     }
 
-
+    @Override
+    public Set<Entry<K, V>> entrySet() {
+        return null;
+    }
 }
