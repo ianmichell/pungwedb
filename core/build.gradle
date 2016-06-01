@@ -1,4 +1,6 @@
 dependencies {
+    compile 'org.slf4j:slf4j-log4j12'
+    compile 'org.apache.commons:commons-lang3'
     compile 'net.jpountz.lz4:lz4'
     compile 'joda-time:joda-time'
 }

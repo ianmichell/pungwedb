@@ -1,11 +1,20 @@
 package com.pungwe.db.core.io.store;
 
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.core.io.volume.Volume;
+
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Created by 917903 on 24/05/2016.
+ * Created by ian on 27/05/2016.
  */
-public class AppendOnlyStore implements Store {
+public class DirectStore implements Store {
+
+    protected final Volume volume;
+
+    public DirectStore(Volume volume, long maxEntries) {
+        this.volume = volume;
+    }
 
     @Override
     public Object get(long pointer, Serializer serializer) {

@@ -2,10 +2,13 @@ package com.pungwe.db.core.collections;
 
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.core.io.store.Store;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
 
@@ -14,7 +17,7 @@ import java.util.function.Predicate;
  */
 public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
-    protected final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    protected final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
     private final Comparator<K> keyComparator;
 
     public BaseMap(Comparator<K> keyComparator) {
@@ -58,33 +61,40 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
     @Override
     public NavigableSet<K> navigableKeySet() {
-        return new KeySet<>(this);
+        return new KeySet<>((BaseMap<K, Object>)this);
     }
 
     @Override
     public NavigableSet<K> keySet() {
-        return null;
+        return navigableKeySet();
     }
 
     @Override
     public NavigableSet<K> descendingKeySet() {
-        return null;
+        return this.descendingMap().navigableKeySet();
     }
 
     public abstract Entry<K, V> getEntry(K key);
 
-    public abstract Entry<K, V> putEntry(K key, V value);
-
-    public abstract Entry<K, V> replaceEntry(K key, V value);
-
-    protected Iterator<Entry<K, V>> descendingIterator(Comparator<? super K> comparator,
-                                                                K low, boolean lowInclusive,
-                                                                K high, boolean highInclusive) {
-        return iterator((o1, o2) -> -comparator().compare(o1, o2), low, lowInclusive, high, highInclusive);
+    public Entry<K, V> putEntry(K key, V value) {
+        return putEntry(key, value, true);
     }
 
+    public abstract Entry<K, V> putEntry(K key, V value, boolean replace);
+
+    public Entry<K, V> replaceEntry(K key, V value) {
+        Entry<K, V> entry = getEntry(key);
+        putEntry(key, value, true);
+        return entry;
+    }
+
+    protected abstract Iterator<Entry<K, V>> descendingIterator(Comparator<? super K> comparator,
+                                                                K low, boolean lowInclusive,
+                                                                K high, boolean highInclusive);
+
     protected Iterator<Entry<K, V>> descendingIterator() {
-        return descendingIterator(comparator(), null, true, null, true);
+        return descendingIterator((o1, o2) ->
+                -comparator().compare(o1, o2), null, true, null, true);
     }
 
     protected abstract Iterator<Entry<K, V>> iterator(Comparator<? super K> comparator,
@@ -216,7 +226,7 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
     @Override
     public Comparator<? super K> comparator() {
-        return this.comparator();
+        return keyComparator;
     }
 
     @Override
@@ -286,7 +296,8 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
     @Override
     public V put(K key, V value) {
-        return null;
+        Entry<K, V> entry = putEntry(key, value);
+        return entry == null ? null : entry.getValue();
     }
 
     @Override
@@ -325,6 +336,57 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
         };
     }
 
+    final static class BaseMapEntry<K, V> implements Map.Entry<K, V> {
+
+        static final Logger log = LoggerFactory.getLogger(BaseMapEntry.class);
+
+        private final BaseMap<K, V> map;
+        private final K key;
+        private final V value;
+
+        public BaseMapEntry(K key, V value, BaseMap<K, V> map) {
+            this.key = key;
+            this.value = value;
+            this.map = map;
+        }
+
+        @Override
+        public K getKey() {
+            return key;
+        }
+
+        @Override
+        public V getValue() {
+            return value;
+        }
+
+        @Override
+        public V setValue(V value) {
+            Entry<K, V> e = map.putEntry((K)key, value, true);
+            if (e != null) {
+                return e.getValue();
+            }
+            return null;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            BaseMapEntry<K,V> that = (BaseMapEntry<K,V>) o;
+
+            if (!key.equals(that.key)) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            return key.hashCode();
+        }
+    }
+
     static final class SubMap<K, V> extends BaseMap<K, V> {
 
         private final BaseMap<K, V> parent;
@@ -343,15 +405,15 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
             this.lowInclusive = lowInclusive;
             this.highInclusive = highInclusive;
             this.descending = descending;
-            if (low != null && high != null && parent.keyComparator.compare((K) low, (K) high) > 0) {
+            if (low != null && high != null && comparator().compare((K) low, (K) high) > 0) {
                 throw new IllegalArgumentException();
             }
         }
 
         private boolean tooLow(K key) {
             if (low != null) {
-                int c = parent.keyComparator.compare(key, (K) low);
-                if (c > 0 || (c == 0 && !lowInclusive))
+                int c = comparator().compare(key, low);
+                if (c < 0 || (c == 0 && !lowInclusive))
                     return true;
             }
             return false;
@@ -359,8 +421,8 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
         private boolean tooHigh(K key) {
             if (high != null) {
-                int c = parent.keyComparator.compare(key, (K) high);
-                if (c < 0 || (c == 0 && !highInclusive))
+                int c = comparator().compare(key, (K) high);
+                if (c > 0 || (c == 0 && !highInclusive))
                     return true;
             }
             return false;
@@ -384,14 +446,24 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
         protected Iterator<Entry<K, V>> descendingIterator(Comparator<? super K> comparator,
                                                            K low, boolean lowInclusive,
                                                            K high, boolean highInclusive) {
-            return parent.descendingIterator(comparator, low, lowInclusive, high, highInclusive);
+            if (descending) {
+                return parent.iterator(comparator, low, lowInclusive, high, highInclusive);
+            } else {
+                return parent.descendingIterator((o1, o2) -> -comparator.compare(o1, o2), low, lowInclusive,
+                        high, highInclusive);
+            }
         }
 
         @Override
         protected Iterator<Entry<K, V>> iterator(Comparator<? super K> comparator,
                                                  K low, boolean lowInclusive,
                                                  K high, boolean highInclusive) {
-            return parent.iterator(comparator, low, lowInclusive, high, highInclusive);
+            if (descending) {
+                return parent.descendingIterator((o1, o2) -> -comparator.compare(o1, o2), low, lowInclusive,
+                        high, highInclusive);
+            } else {
+                return parent.iterator(comparator, low, lowInclusive, high, highInclusive);
+            }
         }
 
         @Override
@@ -486,8 +558,8 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
         }
 
         @Override
-        public Entry<K, V> putEntry(K key, V value) {
-            return !inBounds(key) ? null : parent.putEntry(key, value);
+        public Entry<K, V> putEntry(K key, V value, boolean replace) {
+            return !inBounds(key) ? null : parent.putEntry(key, value, replace);
         }
 
         @Override
@@ -502,21 +574,42 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
         @Override
         public int size() {
-            return keySet().size();
+            return new KeySet<K>((BaseMap<K, Object>) parent, low, lowInclusive, high, highInclusive).size();
         }
 
         @Override
         public Set<Entry<K, V>> entrySet() {
-            return null;
+            return new EntrySet<>(this);
+        }
+
+        @Override
+        public NavigableSet<K> keySet() {
+            return new KeySet<>((BaseMap<K, Object>) this, low, lowInclusive, high, highInclusive);
         }
     }
 
     static final class KeySet<K> implements NavigableSet<K> {
 
         final BaseMap<K, Object> map;
+        private final K high, low;
+        private final boolean lowInclusive, highInclusive;
+        private final AtomicLong size = new AtomicLong(-1l);
+        private Iterator<K> iterator;
 
         public KeySet(BaseMap<K, Object> map) {
             this.map = map;
+            this.low = null;
+            this.high = null;
+            this.lowInclusive = false;
+            this.highInclusive = false;
+        }
+
+        public KeySet(BaseMap<K, Object> map, K low, boolean lowInclusive, K high, boolean highInclusive) {
+            this.map = map;
+            this.high = high;
+            this.low = low;
+            this.highInclusive = highInclusive;
+            this.lowInclusive = lowInclusive;
         }
 
         @Override
@@ -553,22 +646,28 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
 
         @Override
         public Iterator<K> iterator() {
-            final Iterator<Entry<K, Object>> it = map.iterator();
-            return new Iterator<K>() {
-                @Override
-                public boolean hasNext() {
-                    return it.hasNext();
-                }
 
-                @Override
-                public K next() {
-                    Entry<K, Object> e = it.next();
-                    if (e != null) {
-                        return e.getKey();
+            if (iterator == null) {
+                final Iterator<Entry<K, Object>> it = map.iterator(map.comparator(), low, lowInclusive,
+                        high, highInclusive);
+
+                iterator = new Iterator<K>() {
+                    @Override
+                    public boolean hasNext() {
+                        return it.hasNext();
                     }
-                    return null;
-                }
-            };
+
+                    @Override
+                    public K next() {
+                        Entry<K, Object> e = it.next();
+                        if (e != null) {
+                            return e.getKey();
+                        }
+                        return null;
+                    }
+                };
+            }
+            return iterator;
         }
 
         @Override

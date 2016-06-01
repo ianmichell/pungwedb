@@ -73,6 +73,8 @@ subprojects {
 
         dependencies {
 
+            dependency 'org.slf4j:slf4j-log4j12:1.7.21'
+            dependency 'org.apache.commons:commons-lang3:3.4'
             // FIXME: This might not be needed...
             dependency "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
             dependency "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}"

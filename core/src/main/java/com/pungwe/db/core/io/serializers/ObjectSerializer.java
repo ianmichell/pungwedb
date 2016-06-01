@@ -12,7 +12,7 @@ import java.util.*;
 /**
  * Created by ian on 25/05/2016.
  */
-public class ObjectSerializer implements Serializer<Object> {
+public class ObjectSerializer implements Serializer {
 
     private static final byte NULL = 'N';
     private static final byte STRING = 'S';
