@@ -1,0 +1,256 @@
+09:13:00.676 WARN  None o.e.c.EnsimeConfigProtocol$ - /Users/ian/projects/java/pungwedb/core/src/main/resources does not exist, creating
+09:13:00.679 WARN  None o.e.c.EnsimeConfigProtocol$ - /Users/ian/projects/java/pungwedb/core/src/test/resources does not exist, creating
+09:13:01.060 INFO  None a.e.s.Slf4jLogger - Slf4jLogger started
+09:13:01.066 DEBUG EventStream(akka://ENSIME) a.e.EventStream - logger log1-Slf4jLogger started
+09:13:01.069 DEBUG EventStream(akka://ENSIME) a.e.EventStream - Default Loggers started
+09:13:01.101 INFO  None o.a.c.v.i.StandardFileSystemManager - Using "/var/folders/rk/cjxzh6p50sn82t6sbf3p69y00000gn/T/vfs_cache" as temporary files store.
+09:13:01.142 DEBUG akka://ENSIME/system/IO-TCP/selectors/$a/0 a.i.TcpListener - Successfully bound to /127.0.0.1:59063
+09:13:01.145 INFO  akka://ENSIME/user/ensime-main/tcp-server o.e.s.t.TCPServer - Bound server on port 59063
+09:13:01.149 INFO  None o.e.s.PortUtil$ - creating port file: /Users/ian/projects/java/pungwedb/.ensime_cache.d/port
+09:13:01.525 INFO  None o.e.i.d.DatabaseService - creating the search database...
+09:13:01.721 INFO  None c.z.h.HikariDataSource - HikariCP pool HikariPool-0 is starting.
+09:13:01.752 DEBUG akka://ENSIME/system/IO-TCP/selectors/$a/1 a.i.TcpListener - Successfully bound to /127.0.0.1:59064
+09:13:01.754 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor - Environment:
+09:13:01.755 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   OS : Mac OS X
+09:13:01.755 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Java : Java HotSpot(TM) 64-Bit Server VM 25.92-b14, Java(TM) SE Runtime Environment 1.8.0_92-b14
+09:13:01.755 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Scala version: version 2.11.7
+09:13:01.758 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Ensime : 0.9.10-SNAPSHOT
+09:13:01.758 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Built with Scala version: 2.11.8
+09:13:01.759 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Built with sbt version: 0.13.11
+09:13:01.759 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Built from git sha: 552f18aa25be0484415d935cc54b35634a6e2e26
+09:13:01.759 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor -   Built on: 2016-05-31 21:40:56.971
+09:13:01.762 INFO  akka://ENSIME/user/ensime-main o.e.s.ServerActor - ENSIME HTTP on /127.0.0.1
+09:13:01.762 INFO  None o.e.s.PortUtil$ - creating port file: /Users/ian/projects/java/pungwedb/.ensime_cache.d/http
+09:13:01.934 INFO  None o.e.i.d.DatabaseService - ... created the search database
+09:13:01.940 DEBUG None o.e.f.FileWatchService - init watcher
+09:13:01.947 DEBUG None o.e.f.FileWatchService - start a background monitoring thread
+09:13:01.948 DEBUG None o.e.f.FileWatchService - start monitoring WatchService events
+09:13:01.982 DEBUG None o.e.f.FileWatchService - init watcher
+09:13:01.982 DEBUG None o.e.f.FileWatchService - start a background monitoring thread
+09:13:01.982 DEBUG None o.e.f.FileWatchService - start monitoring WatchService events
+09:13:01.982 DEBUG None o.e.f.FileWatchService - init watcher
+09:13:01.982 DEBUG None o.e.f.FileWatchService - start a background monitoring thread
+09:13:01.983 DEBUG None o.e.f.FileWatchService - start monitoring WatchService events
+09:13:02.267 DEBUG akka://ENSIME/system/IO-TCP/selectors/$a/1 a.i.TcpListener - New connection accepted
+09:13:02.738 DEBUG akka://ENSIME/user/$a/1 o.e.s.RequestHandler - ConnectionInfoReq
+09:13:02.740 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message ConnectionInfoReq in state awaitingConnectionInfoReq
+09:13:02.742 DEBUG akka://ENSIME/user/$a/1 o.e.s.RequestHandler - received handled message ConnectionInfo(None,EnsimeImplementation(ENSIME),0.8.21) in state receive
+09:13:02.885 WARN  akka://ENSIME/user/ensime-main/project o.e.c.Project - Detected a pure Java project. Scala queries are not available.
+09:13:02.898 DEBUG akka://ENSIME/user/$a o.e.s.ConnectionHandler - received handled message AnalyzerReadyEvent
+09:13:02.898 DEBUG None o.e.i.SearchService - findStaleFileChecks
+09:13:02.899 DEBUG None o.e.i.SearchService - removing 0 stale files from the index
+09:13:02.914 DEBUG None o.e.i.SearchService - Indexing bases...
+09:13:02.932 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/org.hamcrest/hamcrest-core/1.3/42a25dc3219429f0e5d060061f71acb49bf010a0/hamcrest-core-1.3.jar
+09:13:03.044 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/joda-time/joda-time/2.9.2/36d6e77a419cb455e6fd5909f6f96b168e21e9d0/joda-time-2.9.2.jar
+09:13:03.053 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/net.jpountz.lz4/lz4/1.3.0/c708bb2590c0652a642236ef45d9f99ff842a2ce/lz4-1.3.0.jar
+09:13:03.180 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/log4j/log4j/1.2.17/5af35056b4d257e4b64b9e8069c0746e8b08629f/log4j-1.2.17.jar
+09:13:03.184 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-log4j12/1.7.21/7238b064d1aba20da2ac03217d700d91e02460fa/slf4j-log4j12-1.7.21.jar
+09:13:03.378 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/org.springframework/spring-core/4.2.4.RELEASE/160ccd89230753d4f49477a967f5876b034d9745/spring-core-4.2.4.RELEASE.jar
+09:13:03.384 DEBUG None o.e.i.SearchService - indexing file:///Library/Java/JavaVirtualMachines/jdk1.8.0_92.jdk/Contents/Home/jre/lib/rt.jar
+09:13:03.387 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/org.apache.commons/commons-lang3/3.4/5fe28b9518e58819180a43a850fbc0dd24b7c050/commons-lang3-3.4.jar
+09:13:03.449 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/junit/junit/4.12/2973d150c0dc1fefe998f834810d68f278ea58ec/junit-4.12.jar
+09:13:03.473 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-api/1.7.13/7fcf30c25b8f4a9379b9dad0d3f487b25272c026/slf4j-api-1.7.13.jar
+09:13:03.485 DEBUG None o.e.i.SearchService - indexing file:///Users/ian/.gradle/caches/modules-2/files-2.1/org.springframework/spring-test/4.2.4.RELEASE/6efb87acf8050fc83334ffac305eb91371787283/spring-test-4.2.4.RELEASE.jar
+09:13:13.265 DEBUG None o.e.i.SearchService - committing index to disk...
+09:13:13.816 DEBUG None o.e.i.SearchService - ...done committing index
+09:13:13.817 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - created 62872 and removed 0 searchable rows
+09:13:13.817 DEBUG akka://ENSIME/user/$a o.e.s.ConnectionHandler - received handled message IndexerReadyEvent
+09:13:53.645 DEBUG akka://ENSIME/user/$a/2 o.e.s.RequestHandler - PublicSymbolSearchReq(List(A),5)
+09:13:53.646 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(A),5) in state handleRequests
+09:13:53.647 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(A),5)
+09:13:53.738 DEBUG akka://ENSIME/user/$a/2 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.store.AppendOnlyStore,AppendOnlyStore,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlySt
+09:13:53.781 DEBUG akka://ENSIME/user/$a/3 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Ap),5)
+09:13:53.781 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Ap),5) in state handleRequests
+09:13:53.781 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Ap),5)
+09:13:53.796 DEBUG akka://ENSIME/user/$a/3 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.store.AppendOnlyStore,AppendOnlyStore,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlySt
+09:13:53.906 DEBUG akka://ENSIME/user/$a/4 o.e.s.RequestHandler - PublicSymbolSearchReq(List(App),5)
+09:13:53.906 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(App),5) in state handleRequests
+09:13:53.906 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(App),5)
+09:13:53.916 DEBUG akka://ENSIME/user/$a/4 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.store.AppendOnlyStore,AppendOnlyStore,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlySt
+09:13:54.041 DEBUG akka://ENSIME/user/$a/5 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Appe),5)
+09:13:54.041 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Appe),5) in state handleRequests
+09:13:54.041 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Appe),5)
+09:13:54.050 DEBUG akka://ENSIME/user/$a/5 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.store.AppendOnlyStore,AppendOnlyStore,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlySt
+09:13:54.243 DEBUG akka://ENSIME/user/$a/6 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Appen),5)
+09:13:54.243 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Appen),5) in state handleRequests
+09:13:54.243 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Appen),5)
+09:13:54.251 DEBUG akka://ENSIME/user/$a/6 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.store.AppendOnlyStore,AppendOnlyStore,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlySt
+09:13:54.389 DEBUG akka://ENSIME/user/$a/7 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Append),5)
+09:13:54.390 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Append),5) in state handleRequests
+09:13:54.390 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Append),5)
+09:13:54.399 DEBUG akka://ENSIME/user/$a/7 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.store.AppendOnlyStore,AppendOnlyStore,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlySt
+09:14:14.109 DEBUG akka://ENSIME/user/$a/8 o.e.s.RequestHandler - TypecheckAllReq
+09:14:14.109 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message TypecheckAllReq in state handleRequests
+09:14:14.110 INFO  akka://ENSIME/deadLetters a.a.DeadLetterActorRef - Message [org.ensime.api.TypecheckAllReq$] from Actor[akka://ENSIME/user/$a/8#1919206770] to Actor[akka://ENSIME/deadLetters] was not delivered. [1] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka
+09:15:02.113 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.114 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.115 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.164 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.189 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.189 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.189 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.214 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.215 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.215 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.238 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.239 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.240 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.240 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.240 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.263 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:02.263 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:15:07.283 INFO  akka://ENSIME/deadLetters a.a.DeadLetterActorRef - Message [org.ensime.api.ReloadExistingFilesEvent$] from Actor[akka://ENSIME/user/ensime-main/project#-1801187743] to Actor[akka://ENSIME/deadLetters] was not delivered. [2] dead letters encountered. This logging can be turned off or adjusted with con
+09:15:07.283 DEBUG akka://ENSIME/user/ClassfileIndexer o.e.i.IndexingQueueActor - Indexing 37 files
+org.apache.commons.vfs2.FileSystemException: Could not determine the last modified timestamp of "file:///Users/ian/projects/java/pungwedb/core/build/classes/main/com/pungwe/db/core/collections/BaseMap$EntrySet.class" because it does not exist.
+	at org.apache.commons.vfs2.provider.DefaultFileContent.getLastModifiedTime(DefaultFileContent.java:171)
+	at org.ensime.indexer.database.DatabaseService$FileCheck$.apply(DatabaseService.scala:122)
+	at org.ensime.indexer.IndexingQueueActor$$anonfun$receive$1$$anonfun$applyOrElse$2$$anonfun$apply$13$$anonfun$apply$14.apply(SearchService.scala:344)
+	at org.ensime.indexer.IndexingQueueActor$$anonfun$receive$1$$anonfun$applyOrElse$2$$anonfun$apply$13$$anonfun$apply$14.apply(SearchService.scala:341)
+	at scala.collection.immutable.List.foreach(List.scala:381)
+	at org.ensime.indexer.IndexingQueueActor$$anonfun$receive$1$$anonfun$applyOrElse$2$$anonfun$apply$13.apply(SearchService.scala:341)
+	at org.ensime.indexer.IndexingQueueActor$$anonfun$receive$1$$anonfun$applyOrElse$2$$anonfun$apply$13.apply(SearchService.scala:337)
+	at scala.concurrent.impl.CallbackRunnable.run(Promise.scala:32)
+	at scala.concurrent.impl.ExecutionContextImpl$AdaptedForkJoinTask.exec(ExecutionContextImpl.scala:121)
+	at scala.concurrent.forkjoin.ForkJoinTask.doExec(ForkJoinTask.java:260)
+	at scala.concurrent.forkjoin.ForkJoinPool$WorkQueue.runTask(ForkJoinPool.java:1339)
+	at scala.concurrent.forkjoin.ForkJoinPool.runWorker(ForkJoinPool.java:1979)
+	at scala.concurrent.forkjoin.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:107)
+09:15:32.098 DEBUG akka://ENSIME/user/$a/9 o.e.s.RequestHandler - RefactorReq(1,OrganiseImportsRefactorDesc(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlyStore.java),false)
+09:15:32.098 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message RefactorReq(1,OrganiseImportsRefactorDesc(/Users/ian/projects/java/pungwedb/core/src/main/java/com/pungwe/db/core/io/store/AppendOnlyStore.java),false) in state handleRequests
+09:15:32.098 INFO  akka://ENSIME/deadLetters a.a.DeadLetterActorRef - Message [org.ensime.api.RefactorReq] from Actor[akka://ENSIME/user/$a/9#1207880261] to Actor[akka://ENSIME/deadLetters] was not delivered. [3] dead letters encountered. This logging can be turned off or adjusted with configuration settings 'akka.log-
+09:16:12.109 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.110 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.110 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.110 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.110 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.110 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.110 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.111 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.154 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.176 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.176 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.177 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.199 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.199 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.199 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.219 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.220 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.221 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.221 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.244 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.244 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.288 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.288 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.334 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.334 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:12.359 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message AskReTypecheck in state handleRequests
+09:16:17.379 INFO  akka://ENSIME/deadLetters a.a.DeadLetterActorRef - Message [org.ensime.api.ReloadExistingFilesEvent$] from Actor[akka://ENSIME/user/ensime-main/project#-1801187743] to Actor[akka://ENSIME/deadLetters] was not delivered. [4] dead letters encountered. This logging can be turned off or adjusted with con
+09:16:17.380 DEBUG akka://ENSIME/user/ClassfileIndexer o.e.i.IndexingQueueActor - Indexing 42 files
+09:19:55.068 DEBUG akka://ENSIME/user/$a/10 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Appen),5)
+09:19:55.068 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Appen),5) in state handleRequests
+09:19:55.068 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Appen),5)
+09:19:55.076 DEBUG akka://ENSIME/user/$a/10 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.apache.log4j.helpers.AppenderAttachableImpl,AppenderAttachableImpl,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/apache/l
+09:19:55.245 DEBUG akka://ENSIME/user/$a/11 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Appe),5)
+09:19:55.246 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Appe),5) in state handleRequests
+09:19:55.246 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Appe),5)
+09:19:55.253 DEBUG akka://ENSIME/user/$a/11 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.apache.log4j.helpers.AppenderAttachableImpl,AppenderAttachableImpl,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/apache/l
+09:19:55.380 DEBUG akka://ENSIME/user/$a/12 o.e.s.RequestHandler - PublicSymbolSearchReq(List(App),5)
+09:19:55.381 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(App),5) in state handleRequests
+09:19:55.381 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(App),5)
+09:19:55.390 DEBUG akka://ENSIME/user/$a/12 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.apache.log4j.helpers.AppenderAttachableImpl,AppenderAttachableImpl,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/apache/l
+09:19:55.549 DEBUG akka://ENSIME/user/$a/13 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Ap),5)
+09:19:55.550 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Ap),5) in state handleRequests
+09:19:55.550 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Ap),5)
+09:19:55.557 DEBUG akka://ENSIME/user/$a/13 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.apache.log4j.helpers.AppenderAttachableImpl,AppenderAttachableImpl,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/apache/l
+09:19:55.683 DEBUG akka://ENSIME/user/$a/14 o.e.s.RequestHandler - PublicSymbolSearchReq(List(A),5)
+09:19:55.684 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(A),5) in state handleRequests
+09:19:55.684 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(A),5)
+09:19:55.699 DEBUG akka://ENSIME/user/$a/14 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.hamcrest.internal.ArrayIterator,ArrayIterator,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/hamcrest/internal/ArrayIterat
+09:19:55.819 DEBUG akka://ENSIME/user/$a/15 o.e.s.RequestHandler - PublicSymbolSearchReq(List(),5)
+09:19:55.819 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(),5) in state handleRequests
+09:19:55.819 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(),5)
+09:19:55.923 DEBUG akka://ENSIME/user/$a/15 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.serializers.LZ4SerializerTest,LZ4SerializerTest,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/test/java/com/pungwe/db/core/io/serializ
+09:19:56.056 DEBUG akka://ENSIME/user/$a/16 o.e.s.RequestHandler - PublicSymbolSearchReq(List(V),5)
+09:19:56.056 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(V),5) in state handleRequests
+09:19:56.056 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(V),5)
+09:19:56.070 DEBUG akka://ENSIME/user/$a/16 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.apache.commons.lang3.Validate,Validate,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/apache/commons/lang3/Validate.java,8
+09:19:56.157 DEBUG akka://ENSIME/user/$a/17 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Vo),5)
+09:19:56.157 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Vo),5) in state handleRequests
+09:19:56.157 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Vo),5)
+09:19:56.165 DEBUG akka://ENSIME/user/$a/17 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(java.lang.invoke.VolatileCallSite,VolatileCallSite,Class,None), TypeSearchResult(java.lang.Void,Void,Class,None))) in state receive
+09:19:56.336 DEBUG akka://ENSIME/user/$a/18 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Vol),5)
+09:19:56.337 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Vol),5) in state handleRequests
+09:19:56.337 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Vol),5)
+09:19:56.344 DEBUG akka://ENSIME/user/$a/18 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(java.lang.invoke.VolatileCallSite,VolatileCallSite,Class,None), TypeSearchResult(java.awt.image.VolatileImage,VolatileImage,Class,None))) in state receive
+09:19:56.516 DEBUG akka://ENSIME/user/$a/19 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Volu),5)
+09:19:56.517 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Volu),5) in state handleRequests
+09:19:56.517 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Volu),5)
+09:19:56.523 DEBUG akka://ENSIME/user/$a/19 o.e.s.RequestHandler - received handled message SymbolSearchResults(List()) in state receive
+09:19:56.697 DEBUG akka://ENSIME/user/$a/20 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Volum),5)
+09:19:56.697 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Volum),5) in state handleRequests
+09:19:56.697 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Volum),5)
+09:19:56.702 DEBUG akka://ENSIME/user/$a/20 o.e.s.RequestHandler - received handled message SymbolSearchResults(List()) in state receive
+09:19:56.821 DEBUG akka://ENSIME/user/$a/21 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Volume),5)
+09:19:56.821 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Volume),5) in state handleRequests
+09:19:56.821 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Volume),5)
+09:19:56.826 DEBUG akka://ENSIME/user/$a/21 o.e.s.RequestHandler - received handled message SymbolSearchResults(List()) in state receive
+09:19:57.517 DEBUG akka://ENSIME/user/$a/22 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Volum),5)
+09:19:57.517 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Volum),5) in state handleRequests
+09:19:57.517 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Volum),5)
+09:19:57.523 DEBUG akka://ENSIME/user/$a/22 o.e.s.RequestHandler - received handled message SymbolSearchResults(List()) in state receive
+09:19:57.641 DEBUG akka://ENSIME/user/$a/23 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Volu),5)
+09:19:57.641 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Volu),5) in state handleRequests
+09:19:57.641 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Volu),5)
+09:19:57.647 DEBUG akka://ENSIME/user/$a/23 o.e.s.RequestHandler - received handled message SymbolSearchResults(List()) in state receive
+09:19:57.799 DEBUG akka://ENSIME/user/$a/24 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Vol),5)
+09:19:57.800 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Vol),5) in state handleRequests
+09:19:57.800 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Vol),5)
+09:19:57.805 DEBUG akka://ENSIME/user/$a/24 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(java.lang.invoke.VolatileCallSite,VolatileCallSite,Class,None), TypeSearchResult(java.awt.image.VolatileImage,VolatileImage,Class,None))) in state receive
+09:19:58.026 DEBUG akka://ENSIME/user/$a/25 o.e.s.RequestHandler - PublicSymbolSearchReq(List(Vo),5)
+09:19:58.026 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(Vo),5) in state handleRequests
+09:19:58.027 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(Vo),5)
+09:19:58.033 DEBUG akka://ENSIME/user/$a/25 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(java.lang.invoke.VolatileCallSite,VolatileCallSite,Class,None), TypeSearchResult(java.lang.Void,Void,Class,None))) in state receive
+09:19:58.181 DEBUG akka://ENSIME/user/$a/26 o.e.s.RequestHandler - PublicSymbolSearchReq(List(V),5)
+09:19:58.181 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(V),5) in state handleRequests
+09:19:58.181 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(V),5)
+09:19:58.188 DEBUG akka://ENSIME/user/$a/26 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(org.apache.commons.lang3.Validate,Validate,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/.ensime_cache.d/dep-src/source-jars/org/apache/commons/lang3/Validate.java,8
+09:19:58.406 DEBUG akka://ENSIME/user/$a/27 o.e.s.RequestHandler - PublicSymbolSearchReq(List(),5)
+09:19:58.406 DEBUG akka://ENSIME/user/ensime-main/project o.e.c.Project - received handled message PublicSymbolSearchReq(List(),5) in state handleRequests
+09:19:58.407 DEBUG akka://ENSIME/user/ensime-main/project/indexer o.e.c.Indexer - received handled message PublicSymbolSearchReq(List(),5)
+09:19:58.461 DEBUG akka://ENSIME/user/$a/27 o.e.s.RequestHandler - received handled message SymbolSearchResults(List(TypeSearchResult(com.pungwe.db.core.io.serializers.LZ4SerializerTest,LZ4SerializerTest,Class,Some(LineSourcePosition(/Users/ian/projects/java/pungwedb/core/src/test/java/com/pungwe/db/core/io/serializ

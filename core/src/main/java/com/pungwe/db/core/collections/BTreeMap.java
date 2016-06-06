@@ -34,17 +34,17 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     private final static byte NODE_START = '[';
     private final static byte NODE_END = ']';
 
-    public BTreeMap(Store store, Comparator<K> keyComparator, long maxNodeSize) {
+    public BTreeMap(Store store, Comparator<K> keyComparator, long maxNodeSize) throws IOException {
         this(store, keyComparator, new ObjectSerializer(), new ObjectSerializer(), maxNodeSize, -1);
     }
 
     public BTreeMap(Store store, Comparator<K> keyComparator,
-                    Serializer keySerializer, Serializer valueSerializer, long maxNodeSize) {
+                    Serializer keySerializer, Serializer valueSerializer, long maxNodeSize) throws IOException {
         this(store, keyComparator, keySerializer, valueSerializer, maxNodeSize, -1l);
     }
 
     public BTreeMap(Store store, Comparator<K> keyComparator,
-                    Serializer keySerializer, Serializer valueSerializer, long maxNodeSize, long rootPointer) {
+                    Serializer keySerializer, Serializer valueSerializer, long maxNodeSize, long rootPointer) throws IOException {
         super(keyComparator);
         this.store = store;
         this.maxNodeSize = maxNodeSize;

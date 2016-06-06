@@ -12,6 +12,7 @@ import org.junit.Test;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.io.IOException;
 
 import static javafx.scene.input.KeyCode.V;
 import static org.junit.Assert.assertEquals;
@@ -48,12 +49,12 @@ public class BTreeMapTest {
     };
 
     @Before
-    public void beforeTest() {
+    public void beforeTest() throws IOException {
         entries.clear();
     }
 
     @Test
-    public void testPut() {
+    public void testPut() throws IOException {
 
         BTreeMap<String, String> map = new BTreeMap<String, String>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
@@ -69,7 +70,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testSplit() {
+    public void testSplit() throws IOException {
 
         BTreeMap<String, String> map = new BTreeMap<String, String>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
@@ -226,7 +227,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testIterateEntries() {
+    public void testIterateEntries() throws IOException {
         final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -248,7 +249,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testIterateBackwards() {
+    public void testIterateBackwards() throws IOException {
         final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -270,7 +271,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testReverseMap() {
+    public void testReverseMap() throws IOException {
         final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -289,7 +290,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testIteratingReverseMap() {
+    public void testIteratingReverseMap() throws IOException {
         final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -313,7 +314,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testReverseIteratingReverseMap() {
+    public void testReverseIteratingReverseMap() throws IOException {
         final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -337,7 +338,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testSubMap() {
+    public void testSubMap() throws IOException {
 
         final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
@@ -358,7 +359,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testHeadMapInclusive() {
+    public void testHeadMapInclusive() throws IOException {
 
         final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
@@ -378,7 +379,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testHeadMap() {
+    public void testHeadMap() throws IOException {
 
         final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
@@ -398,7 +399,7 @@ public class BTreeMapTest {
         assertNull(subMap.get(6l));
     }
     @Test
-    public void testTailMap() {
+    public void testTailMap() throws IOException {
 
         final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
@@ -419,7 +420,7 @@ public class BTreeMapTest {
     }
 
     @Test
-    public void testTailMapInclusive() {
+    public void testTailMapInclusive() throws IOException {
 
         final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
