@@ -4,3 +4,5 @@ build
 javac-services*
 .gradle
 .vscode
+.ensime
+.ensime_cache.d
