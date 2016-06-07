@@ -49,7 +49,6 @@ subprojects {
 
     apply plugin: 'java'
     apply plugin: 'jacoco'
-    apply plugin: "org.ensime.gradle"
 
     ext {
         springPlatformVersion = "2.0.1.RELEASE"
@@ -101,15 +100,9 @@ subprojects {
         testCompile "org.springframework:spring-test"
     }
 
-    ensime {
-      formattingPrefs {
-        indentSpaces   4
-        indentWithTabs false
-      }
-    }
-
     task writeClasspath << {
         buildDir.mkdirs()
         new File(buildDir, "classpath.txt").text = configurations.runtime.asPath + "\n"
+        new File(buildDir, "test-classpath.txt").text = configurations.testRuntime.asPath  + ":${buildDir}/classes/main" + "\n"
     }
 }

@@ -16,6 +16,7 @@ import static org.junit.Assert.assertEquals;
  */
 public class LZ4SerializerTest {
 
+    @SuppressWarnings("unchecked")
     @Test
     public void testLZ4Serializer() throws Exception {
 

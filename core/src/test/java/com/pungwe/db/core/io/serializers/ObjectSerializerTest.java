@@ -17,6 +17,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Created by ian on 25/05/2016.
  */
+@SuppressWarnings("unchecked")
 public class ObjectSerializerTest {
 
     @Test

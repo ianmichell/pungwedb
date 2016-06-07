@@ -24,7 +24,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class BTreeMapTest {
 
-    private List entries = new ArrayList<>(100);
+    private List<Object> entries = new ArrayList<>(100);
 
     private Store store = new Store() {
 
