@@ -63,8 +63,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         lock.readLock().lock();
         try {
             LeafNode<K, Object> leaf = (LeafNode<K, Object>) findLeaf((K) key);
-            if (leaf != null && leaf.hasKey((K) key)) {
-                Object value = leaf.getValue((K) key);
+            if (leaf != null && leaf.hasKey(key)) {
+                Object value = leaf.getValue(key);
                 return new BaseMapEntry<>(key, (V) value, this);
             } else {
                 return null;

@@ -81,7 +81,7 @@ public class ObjectSerializer implements Serializer {
         } else if (Collection.class.isAssignableFrom(value.getClass())) {
             out.writeByte(ARRAY);
             out.writeInt(((Collection)value).size());
-            Iterator<Object> it = ((Iterable) value).iterator();
+            Iterator<Object> it = ((Iterable<Object>) value).iterator();
             while (it.hasNext()) {
                 writeEntry(out, it.next());
             }

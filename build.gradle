@@ -107,4 +107,9 @@ subprojects {
         indentWithTabs false
       }
     }
+
+    task writeClasspath << {
+        buildDir.mkdirs()
+        new File(buildDir, "classpath.txt").text = configurations.runtime.asPath + "\n"
+    }
 }

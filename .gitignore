@@ -1,3 +1,6 @@
 build
 *.iml
 .idea
+javac-services*
+.gradle
+.vscode
