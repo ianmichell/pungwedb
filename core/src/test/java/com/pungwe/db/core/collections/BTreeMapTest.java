@@ -46,6 +46,16 @@ public class BTreeMapTest {
             entries.set((int) pointer, value);
             return pointer;
         }
+
+        @Override
+        public long size() {
+            return (long)entries.size();
+        }
+
+        @Override
+        public Iterator<Object> iterator() {
+            return entries.iterator();
+        }
     };
 
     @Before

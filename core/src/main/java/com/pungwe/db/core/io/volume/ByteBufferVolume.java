@@ -32,8 +32,8 @@ public abstract class ByteBufferVolume implements Volume {
     public ByteBufferVolume(String name, boolean readOnly, int sliceShift) {
         this.name = name;
         this.readOnly = readOnly;
-        this.sliceShift = sliceShift;
-        this.sliceSize = 1 << sliceShift; // MAX_SIZE is 2GB
+        this.sliceShift = (sliceShift < Constants.MIN_PAGE_SHIFT ? Constants.MIN_PAGE_SHIFT : sliceShift);
+        this.sliceSize = 1 << this.sliceShift; // MAX_SIZE is 2GB
         this.sliceSizeModMask = sliceSize - 1;
     }
 
@@ -175,13 +175,24 @@ public abstract class ByteBufferVolume implements Volume {
 
     private static final class ByteBufferVolumeDataInput extends VolumeDataInput {
 
+        protected final int sliceShift;
+        protected final int sliceSizeModMask;
+        protected final ByteBuffer[] slices;
+
         public ByteBufferVolumeDataInput(ByteBuffer[] slices, long offset, int sliceShift, int sliceSizeModMask) {
             super(offset);
+            this.sliceShift = sliceShift;
+            this.sliceSizeModMask = sliceSizeModMask;
+            this.slices = slices;
         }
 
         @Override
         public void readFully(byte[] b, int off, int len) throws IOException {
-
+            int n = 0;
+			ByteBuffer buffer = this.slices[(int) (this.position.get() >>> sliceShift)].duplicate();
+			buffer.position((int) (position.get() & sliceSizeModMask));
+			buffer.get(b, off, len);
+			position.getAndAdd(len);
         }
     }
 

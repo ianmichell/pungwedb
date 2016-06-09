@@ -8,6 +8,7 @@ import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
+import java.lang.reflect.Array;
 
 /**
  * Created by ian on 25/05/2016.
@@ -45,9 +46,9 @@ public class ObjectSerializer implements Serializer {
             out.write((byte[])value);
         } else if (value.getClass().isArray()) {
             out.writeByte(ARRAY);
-            out.writeInt(((Object[])value).length);
-            for (int i = 0; i < ((Object[]) value).length; i++) {
-                writeEntry(out, ((Object[])value)[i]);
+            out.writeInt(Array.getLength(value));
+            for (int i = 0; i < Array.getLength(value); i++) {
+                writeEntry(out, Array.get(value, i));
             }
         } else if (String.class.isAssignableFrom(value.getClass())) {
             out.writeByte(STRING);

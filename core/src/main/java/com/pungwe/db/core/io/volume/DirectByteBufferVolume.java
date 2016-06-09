@@ -17,6 +17,7 @@ public class DirectByteBufferVolume extends ByteBufferVolume {
 
     public DirectByteBufferVolume(String name, boolean readOnly, int sliceShift, long maxSize) {
         super(name, readOnly, sliceShift);
+        this.maxSize = maxSize;
     }
 
     @Override
