@@ -12,6 +12,7 @@ import org.junit.Before;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
 public class DirectStoreTest {
 
@@ -146,5 +147,18 @@ public class DirectStoreTest {
             assertEquals(("my string " + ++i), (String)value);
         }
         assertEquals(100, i);
+    }
+
+    @Test
+    public void testFindHeader() throws Exception {
+
+        long position = this.store.add("Test Record", new ObjectSerializer());
+
+        // Create a new copy of the store
+        Store newStore = new DirectStore(volume);
+
+        Iterator<Object> it = newStore.iterator();
+        assertTrue(it.hasNext());
+        assertEquals("Test Record", it.next());
     }
 }

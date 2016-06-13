@@ -85,6 +85,8 @@ subprojects {
 
             dependency 'com.esotericsoftware:kryo:3.0.3'
 
+            dependency 'com.google.guava:guava:19.0'
+
             // Templating
             dependency "com.lyncode:jtwig-spring:3.1.1"
 

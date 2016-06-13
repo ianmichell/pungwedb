@@ -3,6 +3,8 @@ package com.pungwe.db.core.collections;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.core.io.store.Store;
+import com.pungwe.db.core.io.store.DirectStore;
+import com.pungwe.db.core.io.volume.Volume;
 import com.pungwe.db.core.io.volume.HeapByteBufferVolume;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
@@ -24,43 +26,13 @@ import static org.junit.Assert.assertTrue;
  */
 public class BTreeMapTest {
 
-    private List<Object> entries = new ArrayList<>(100);
-
-    private Store store = new Store() {
-
-        private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-
-        @Override
-        public Object get(long pointer, Serializer serializer) {
-            return entries.get((int) pointer);
-        }
-
-        @Override
-        public long add(Object value, Serializer serializer) {
-            entries.add(value);
-            return entries.size() - 1;
-        }
-
-        @Override
-        public long update(long pointer, Object value, Serializer serializer) {
-            entries.set((int) pointer, value);
-            return pointer;
-        }
-
-        @Override
-        public long size() {
-            return (long)entries.size();
-        }
-
-        @Override
-        public Iterator<Object> iterator() {
-            return entries.iterator();
-        }
-    };
+    private Volume volume;
+    private Store store;
 
     @Before
     public void beforeTest() throws IOException {
-        entries.clear();
+        volume = new HeapByteBufferVolume("memory", false, 20, -1l);
+        store = new DirectStore(volume);
     }
 
     @Test
@@ -75,7 +47,7 @@ public class BTreeMapTest {
 
         map.put("key", "value");
 
-        assertEquals(1, entries.size());
+        assertEquals(1, store.size());
         assertEquals("value", map.get("key"));
     }
 
@@ -96,7 +68,7 @@ public class BTreeMapTest {
         map.put("5", "5");
         map.put("6", "6");
 
-        assertEquals(3, entries.size());
+        assertEquals(3, store.size());
         assertEquals("1", map.get("1"));
         assertEquals("2", map.get("2"));
         assertEquals("3", map.get("3"));
@@ -121,9 +93,9 @@ public class BTreeMapTest {
         }
         // Timeout after 1 minute...
         long end = System.nanoTime();
-        System.out.println(String.format("Took: %f ms to put", (end - start) / 10000d));
+        System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
-        System.out.println("Tree Size: " + entries.size());
+        System.out.println("Tree Size: " + store.size());
         for (int i = 0; i < 100; i++) {
             try {
                 long get = map.get((long) i);
@@ -157,9 +129,9 @@ public class BTreeMapTest {
             long start = System.nanoTime();
             executor.invokeAll(threads, 1, TimeUnit.MINUTES);
             long end = System.nanoTime();
-            System.out.println(String.format("Took: %f ms to put", (end - start) / 10000d));
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
-            System.out.println("Tree Size: " + entries.size());
+            System.out.println("Tree Size: " + store.size());
             for (int i = 0; i < 100; i++) {
                 try {
                     long get = map.get((long) i);
@@ -193,9 +165,9 @@ public class BTreeMapTest {
             map.put(key, key);
         }
         long end = System.nanoTime();
-        System.out.println(String.format("Took: %f ms to put", (end - start) / 10000d));
+        System.out.println(String.format("Took: %f ms to put: " + store.size(), (end - start) / 1000000d));
 
-        System.out.println("Tree Size: " + entries.size());
+        System.out.println("Tree Size: " + store.size());
         for (String guid : guids) {
             assertEquals(guid, map.get(guid));
         }
@@ -225,9 +197,9 @@ public class BTreeMapTest {
             long start = System.nanoTime();
             executor.invokeAll(threads, 1, TimeUnit.MINUTES);
             long end = System.nanoTime();
-            System.out.println(String.format("Took: %f ms to put", (end - start) / 10000d));
+            System.out.println(String.format("Took: %f ms to put " + store.size(), (end - start) / 1000000d));
 
-            System.out.println("Tree Size: " + entries.size());
+            System.out.println("Tree Size: " + store.size());
             for (String guid : guids) {
                 assertEquals(guid, map.get(guid));
             }

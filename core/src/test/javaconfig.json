@@ -1,5 +1,0 @@
-{
-    "sourcePath": ["java"],
-    "classPathFile": "../../build/test-classpath.txt",
-    "outputDirectory": "build"
-}

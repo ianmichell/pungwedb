@@ -44,7 +44,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     public BTreeMap(Store store, Comparator<K> keyComparator,
-                    Serializer keySerializer, Serializer valueSerializer, long maxNodeSize, long rootPointer) throws IOException {
+                    Serializer keySerializer, Serializer valueSerializer, long maxNodeSize, long rootPointer)
+            throws IOException {
         super(keyComparator);
         this.store = store;
         this.maxNodeSize = maxNodeSize;
@@ -175,7 +176,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     @Override
-    protected Iterator<Entry<K, V>> descendingIterator(Comparator<? super K> comparator, K low, boolean lowInclusive, K high, boolean highInclusive) {
+    protected Iterator<Entry<K, V>> descendingIterator(Comparator<? super K> comparator, K low, boolean lowInclusive,
+                                                       K high, boolean highInclusive) {
         return new ReverseBTreeNodeIterator<K, V>(this, (Comparator<K>) comparator, low, lowInclusive, high, highInclusive);
     }
 
@@ -456,7 +458,6 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                         //out of high bound
                         leaf = null;
                         leafPos = -1;
-                        //$DELAY$
                     }
                 }
             } catch (IOException ex) {

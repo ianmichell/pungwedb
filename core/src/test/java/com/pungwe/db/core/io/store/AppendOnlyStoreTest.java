@@ -46,12 +46,56 @@ public class AppendOnlyStoreTest {
     public void testFindHeader() throws Exception {
 
         long position = this.store.add("Test Record", new ObjectSerializer());
+        this.store.commit();
 
         // Create a new copy of the store
-        this.store = new AppendOnlyStore(volume);
+        Store newStore = new AppendOnlyStore(volume);
 
-        Iterator<Object> it = this.store.iterator();
+        Iterator<Object> it = newStore.iterator();
         assertTrue(it.hasNext());
         assertEquals("Test Record", it.next());
+    }
+
+    @Test
+    public void testFindHeaderMultiRecord() throws Exception {
+
+        for (int i = 0; i < 100; i++) {
+            long position = this.store.add("Test Record: " + (i + 1), new ObjectSerializer());
+        }
+        this.store.commit();
+
+        // Create a new copy of the store
+        Store newStore = new AppendOnlyStore(volume);
+
+        Iterator<Object> it = newStore.iterator();
+        assertTrue(it.hasNext());
+        assertEquals("Test Record: 1", it.next());
+    }
+
+    @Test
+    public void testIterator() throws Exception {
+        for (int i = 0; i < 100; i++) {
+            this.store.add("my string " + (i + 1), new ObjectSerializer());
+        }
+
+        this.store.commit();
+
+        int i = 0;
+        for (Object value : this.store) {
+            assertEquals(("my string " + ++i), (String)value);
+        }
+        assertEquals(100, i);
+    }
+
+    @Test
+    public void testRollback() throws Exception {
+
+        this.store.add("My Record", new ObjectSerializer());
+
+        assertEquals(1, this.store.size());
+
+        this.store.rollback();
+
+        assertEquals(0, this.store.size());
     }
 }
