@@ -1,5 +1,6 @@
 package com.pungwe.db.core.io.serializers;
 
+import com.pungwe.db.core.utils.UUIDGen;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
@@ -26,6 +27,7 @@ public class ObjectSerializer implements Serializer {
     private static final byte TIMESTAMP = 'T';
     private static final byte OBJECT = 'O';
     private static final byte ARRAY = 'A';
+    private static final byte UUID = 'U';
 
     private static final byte KEY = 'K';
     private static final byte VALUE = 'V';
@@ -100,6 +102,9 @@ public class ObjectSerializer implements Serializer {
             writeDate(out, (Calendar) value);
         } else if (DateTime.class.isAssignableFrom(value.getClass())) {
             writeDate(out, (DateTime) value);
+        } else if (UUID.class.isAssignableFrom(value.getClass())) {
+            out.writeByte(UUID);
+            out.write(UUIDGen.asByteArray((UUID)value));
         } else {
             throw new IllegalArgumentException(String.format("%s is not a supported data type",
                     value.getClass().getName()));
@@ -206,6 +211,11 @@ public class ObjectSerializer implements Serializer {
                     array.add(deserialize(in));
                 }
                 return array;
+            }
+            case UUID: {
+                byte[] b = new byte[16];
+                in.readFully(b);
+                return UUIDGen.getUUID(b);
             }
         }
         throw new IOException("Could not find a recognized object");

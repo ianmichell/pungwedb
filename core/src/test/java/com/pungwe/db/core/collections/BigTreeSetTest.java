@@ -5,12 +5,14 @@ import com.pungwe.db.core.io.store.DirectStore;
 import com.pungwe.db.core.io.store.Store;
 import com.pungwe.db.core.io.volume.HeapByteBufferVolume;
 import com.pungwe.db.core.io.volume.Volume;
+import com.pungwe.db.core.utils.UUIDGen;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -50,6 +52,7 @@ public class BigTreeSetTest {
 
     @Test
     public void testDuplicateEntry() throws Exception {
+
         BigTreeSet<String> treeSet = new BigTreeSet<String>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -64,19 +67,22 @@ public class BigTreeSetTest {
     @Test
     public void testIterator() throws Exception {
 
-        BigTreeSet<Long> treeSet = new BigTreeSet<Long>(store, (o1, o2) -> {
+        List<UUID> uuids = new ArrayList<UUID>();
+        BigTreeSet<UUID> treeSet = new BigTreeSet<UUID>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
         }, new ObjectSerializer(), 1024);
         for (int i = 0; i < 100; i++) {
-            assertTrue(treeSet.add(i + 1l));
+            UUID uuid = UUIDGen.getTimeUUID();
+            assertTrue(treeSet.add(uuid));
+            uuids.add(uuid);
         }
 
-        long count = 0;
-        for (Long item : treeSet) {
-            assertEquals((++count), item.longValue());
+        int count = 0;
+        for (UUID item : treeSet) {
+            assertEquals(uuids.get(count++), item);
         }
         assertEquals(100, count);
     }

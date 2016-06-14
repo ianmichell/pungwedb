@@ -6,6 +6,7 @@ import com.pungwe.db.core.io.store.Store;
 import com.pungwe.db.core.io.store.DirectStore;
 import com.pungwe.db.core.io.volume.Volume;
 import com.pungwe.db.core.io.volume.HeapByteBufferVolume;
+import com.pungwe.db.core.utils.UUIDGen;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -160,7 +161,7 @@ public class BTreeMapTest {
         // Timeout after 1 minute...
         long start = System.nanoTime();
         for (int i = 0; i < 100; i++) {
-            final String key = UUID.randomUUID().toString();
+            final String key = UUIDGen.getTimeUUID().toString();
             guids.add(key);
             map.put(key, key);
         }
@@ -176,7 +177,7 @@ public class BTreeMapTest {
     @Test
     public void testMultiThreadInsertRandom() throws Exception {
 
-        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
+        final BTreeMap<UUID, UUID> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
@@ -185,12 +186,18 @@ public class BTreeMapTest {
 
         ExecutorService executor = Executors.newFixedThreadPool(8);
 
-        List<Callable<String>> threads = new LinkedList<>();
-        List<String> guids = new LinkedList<>();
+        List<Callable<UUID>> threads = new LinkedList<>();
+        SortedSet<UUID> guids = new TreeSet<>();
         try {
-            for (int i = 0; i < 100; i++) {
-                final String key = UUID.randomUUID().toString();
-                guids.add(key);
+            for (int i = 0; i < 100000; i++) {
+                final UUID key = UUIDGen.getTimeUUID();
+                synchronized (guids) {
+                    if (!guids.contains(key)) {
+                        guids.add(key);
+                    } else {
+                        throw new RuntimeException("Broken!");
+                    }
+                }
                 threads.add(() -> map.put(key, key));
             }
             // Timeout after 1 minute...
@@ -200,7 +207,8 @@ public class BTreeMapTest {
             System.out.println(String.format("Took: %f ms to put " + store.size(), (end - start) / 1000000d));
 
             System.out.println("Tree Size: " + store.size());
-            for (String guid : guids) {
+            assertEquals(100000, guids.size());
+            for (UUID guid : guids) {
                 assertEquals(guid, map.get(guid));
             }
         } finally {
