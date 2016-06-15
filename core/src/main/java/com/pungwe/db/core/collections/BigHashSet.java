@@ -39,7 +39,7 @@ public class BigHashSet<E> extends AbstractSet<E> {
                 return 0;
             }
             return Long.compare((Long)o1, (Long)o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), maxNodeSize, -1l);
+        }, new ObjectSerializer(), new ObjectSerializer(), maxNodeSize, pointer);
     }
 
     public boolean add(E value) {

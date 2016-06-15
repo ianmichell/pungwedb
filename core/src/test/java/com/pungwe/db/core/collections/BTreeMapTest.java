@@ -2,6 +2,7 @@ package com.pungwe.db.core.collections;
 
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.core.io.store.AppendOnlyStore;
 import com.pungwe.db.core.io.store.Store;
 import com.pungwe.db.core.io.store.DirectStore;
 import com.pungwe.db.core.io.volume.Volume;
@@ -166,9 +167,7 @@ public class BTreeMapTest {
             map.put(key, key);
         }
         long end = System.nanoTime();
-        System.out.println(String.format("Took: %f ms to put: " + store.size(), (end - start) / 1000000d));
 
-        System.out.println("Tree Size: " + store.size());
         for (String guid : guids) {
             assertEquals(guid, map.get(guid));
         }
@@ -177,6 +176,19 @@ public class BTreeMapTest {
     @Test
     public void testMultiThreadInsertRandom() throws Exception {
 
+        multiThreadInsert(store);
+    }
+
+    @Test
+    public void testMultiThreadInsertRandomAppendOnly() throws Exception {
+
+        volume = new HeapByteBufferVolume("memory", false, 20, -1l);
+        store = new AppendOnlyStore(volume);
+
+        multiThreadInsert(store);
+    }
+
+    private void multiThreadInsert(Store store) throws Exception {
         final BTreeMap<UUID, UUID> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
@@ -189,7 +201,7 @@ public class BTreeMapTest {
         List<Callable<UUID>> threads = new LinkedList<>();
         SortedSet<UUID> guids = new TreeSet<>();
         try {
-            for (int i = 0; i < 100000; i++) {
+            for (int i = 0; i < 100; i++) {
                 final UUID key = UUIDGen.getTimeUUID();
                 synchronized (guids) {
                     if (!guids.contains(key)) {
@@ -204,12 +216,19 @@ public class BTreeMapTest {
             long start = System.nanoTime();
             executor.invokeAll(threads, 1, TimeUnit.MINUTES);
             long end = System.nanoTime();
-            System.out.println(String.format("Took: %f ms to put " + store.size(), (end - start) / 1000000d));
-
-            System.out.println("Tree Size: " + store.size());
-            assertEquals(100000, guids.size());
+            System.out.println(String.format("Took: %f ms to put " + map.size() + " store: " + store.size(),
+                    (end - start) / 1000000d));
+            assertEquals(100, map.size());
+            assertEquals(100, guids.size());
+            int i = 0;
             for (UUID guid : guids) {
-                assertEquals(guid, map.get(guid));
+                try {
+                    assertEquals(guid, map.get(guid));
+                    i++;
+                } catch (AssertionError error) {
+                    System.out.println("Failed at: " + i);
+                    throw error;
+                }
             }
         } finally {
             executor.shutdown();

@@ -16,7 +16,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+/* FIXME: This needs to be rethought.
+ * It's slow when the key size is bigger than 10 and we lose size. when it's persistend to disk */
 /**
+ *
  * Created by ian on 25/05/2016.
  */
 public class BTreeMap<K, V> extends BaseMap<K, V> {
@@ -99,9 +102,11 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             // Set current to root record
             long current = rootPointer;
             long[] pointers = new long[1];
+            BTreeNode<K, V>[] parentNodes = new BTreeNode[1];
 
             int pos = 0;
             BTreeNode<K, V> node = (BTreeNode<K, V>) store.get(current, nodeSerializer);
+            parentNodes[0] = node;
             pointers[pos] = current;
             pos++;
             while (!(node instanceof LeafNode)) {
@@ -111,22 +116,30 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 // Make sure we have space
                 if (pos == pointers.length) {
                     pointers = Arrays.copyOf(pointers, pointers.length + 1);
+                    parentNodes = Arrays.copyOf(parentNodes, parentNodes.length + 1);
                 }
 
                 // Add the node to the stack
-                pointers[pos++] = current;
+                pointers[pos] = current;
+                parentNodes[pos++] = node;
+
             }
             // Last item is the leaf node
             LeafNode<K, Object> leaf = (LeafNode<K, Object>) node;
+
+            // We need to check if the value exists
+            boolean exists = leaf.hasKey(key);
             leaf.putValue(key, value, replace);
             // Node is not safe and must be split
             if (leaf != null && maxNodeSize > -1 && ((LeafNode<K, Object>) leaf).keys.length > maxNodeSize) {
-                split(leaf, pointers);
+                split(Arrays.copyOf(parentNodes, parentNodes.length), pointers);
             } else {
-                store.update(current, leaf, nodeSerializer);
+                saveNodes(parentNodes, pointers);
             }
 
-            incrementSize();
+            if (!exists) {
+                incrementSize();
+            }
 
         } catch (IOException ex) {
             log.error("Could not add value for key: " + key, ex);
@@ -136,11 +149,33 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 lock.writeLock().unlock();
             }
         }
-        return new BaseMapEntry<>(key, value, this);
+        return new BaseMapEntry<K, V>(key, value, this);
     }
 
-    private void split(BTreeNode<K, ?> node, long[] pointers) throws IOException {
+    private void saveNodes(BTreeNode<K, V>[] nodes, long[] pointers) throws IOException {
+        // Reverse iterate through each node...
+        for (int i = nodes.length - 1; i > -1; i--) {
+            long current = pointers[i];
+            BTreeNode<K, V> node = nodes[i];
+            BTreeNode<K, V> parent = i - 1 < 0 ? null : nodes[i - 1];
+            long newPointer = store.update(current, node, nodeSerializer);
+            if (current == rootPointer && newPointer != current) {
+                rootPointer = newPointer;
+            }
+            if (parent != null && newPointer != current) {
+                // FIXME: Update all find methods to use Arrays.binarySearch
+                long[] children = ((BranchNode<K>)parent).children;
+                int index = Arrays.binarySearch(children, current);
+                if (index > 0 && index < children.length) {
+                    children[index] = newPointer;
+                }
+            }
+        }
+    }
+
+    private void split(BTreeNode<K, V>[] parents, long[] pointers) throws IOException {
         long offset = pointers[pointers.length - 1];
+        BTreeNode<K, V> node = parents[pointers.length - 1];
         int mid = (node.keys.length - 1) >>> 1;
         K key = node.getKey(mid);
         BTreeNode<K, ?> left = node.copyLeftSplit(mid);
@@ -158,14 +193,14 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         }
 
         // Otherwise we find the parent.
-        BranchNode<K> parent = (BranchNode<K>) store.get(pointers[pointers.length - 2], nodeSerializer);
+        BranchNode<K> parent = (BranchNode<K>)parents[pointers.length - 2];
         parent.putChild(key, children);
 
         if (parent.keys.length > maxNodeSize) {
-            split(parent, Arrays.copyOf(pointers, pointers.length - 1));
+            split(Arrays.copyOf(parents, parents.length - 1), Arrays.copyOf(pointers, pointers.length - 1));
             return;
         } else {
-            store.update(pointers[pointers.length - 2], parent, nodeSerializer);
+            saveNodes(Arrays.copyOf(parents, parents.length - 1), Arrays.copyOf(pointers, pointers.length - 1));
         }
     }
 
@@ -202,7 +237,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         if (size == null) {
             size = new AtomicLong();
         }
-        size.incrementAndGet();
+        size.getAndIncrement();
     }
 
     @Override
