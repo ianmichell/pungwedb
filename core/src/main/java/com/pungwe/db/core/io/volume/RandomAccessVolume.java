@@ -31,7 +31,7 @@ public final class RandomAccessVolume implements Volume {
 
     public RandomAccessVolume(String name, File file, boolean readOnly, long positionLimit) throws IOException {
         this.name = name;
-        randomAccessFile = new RandomAccessFile(file, "rw");
+        randomAccessFile = new RandomAccessFile(file, readOnly ? "r" : "rw");
         this.readOnly = readOnly;
         this.positionLimit = positionLimit;
     }
@@ -103,8 +103,8 @@ public final class RandomAccessVolume implements Volume {
     }
 
     private FileLock lock(FileChannel channel, long startOffset, long endOffset, boolean shared) throws IOException {
-        if (endOffset > positionLimit) {
-            throw new IOException("File position limit has been reached");
+        if (positionLimit > 0 && endOffset > positionLimit) {
+            throw new EOFException("File position limit has been reached");
         }
         FileLock lock = null;
         long time = System.currentTimeMillis();
@@ -140,6 +140,13 @@ public final class RandomAccessVolume implements Volume {
         }
 
         @Override
+        public byte readByte() throws IOException {
+            byte[] b = new byte[1];
+            readFully(b, 0, 1);
+            return b[0];
+        }
+
+        @Override
         public void readFully(byte[] b, int off, int len) throws IOException {
             FileLock lock = null;
             try {
@@ -162,13 +169,17 @@ public final class RandomAccessVolume implements Volume {
         }
 
         @Override
+        public void writeByte(int v) throws IOException {
+            write(new byte[] { (byte)v }, 0, 1);
+        }
+
+        @Override
         public void write(byte[] b, int off, int len) throws IOException {
             FileLock lock = null;
             try {
                 lock = lock(fileChannel, position.get(), position.get() + (len - off), false);
                 ByteBuffer buffer = ByteBuffer.wrap(b, off, len);
                 fileChannel.write(buffer, position.getAndAdd((len - off)));
-
             } finally {
                 unlock(lock);
             }

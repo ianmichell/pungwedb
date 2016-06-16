@@ -4,6 +4,7 @@ import com.pungwe.db.core.utils.Constants;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.EOFException;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
@@ -11,14 +12,13 @@ import java.nio.MappedByteBuffer;
 import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantLock;
 
+// FIXME: This could form the basis for all the volumes
 /**
  * Created by 917903 on 23/05/2016.
  */
-public abstract class ByteBufferVolume implements Volume {
+public abstract class ByteBufferVolume extends AbstractGrowableVolume {
 
     protected static final int VOLUME_PAGE_SHIFT = 20; // 1 MB
-
-    protected final ReentrantLock growLock = new ReentrantLock(false);
 
     protected final String name;
     protected final int sliceShift;
@@ -51,27 +51,6 @@ public abstract class ByteBufferVolume implements Volume {
 
     public abstract ByteBuffer makeNewBuffer(long offset) throws IOException;
 
-    protected void lock() throws IOException {
-        long time = System.currentTimeMillis();
-        while (!growLock.tryLock()) {
-            if (System.currentTimeMillis() - time >= Constants.LOCK_TIMEOUT) {
-                throw new IOException("Timed out whilst attempting to lock volme: "
-                        + name());
-            }
-
-            try {
-                Thread.sleep(0, Constants.LOCK_WAIT);
-            } catch (InterruptedException ex) {
-            }
-        }
-    }
-
-    protected void unlock() {
-        if (growLock.isHeldByCurrentThread()) {
-            growLock.unlock();
-        }
-    }
-
     @Override
     public void clear(long startOffset, long endOffset) throws IOException {
         ByteBuffer buf = slices[(int) (startOffset >>> sliceShift)];
@@ -96,9 +75,7 @@ public abstract class ByteBufferVolume implements Volume {
         if (slicePos < slices.length) {
             return;
         }
-
-        growLock.lock();
-
+        lock();
         try {
             // Check a second time
             if (slicePos < slices.length) {
@@ -116,7 +93,7 @@ public abstract class ByteBufferVolume implements Volume {
 
             slices = slices2;
         } finally {
-            growLock.unlock();
+            unlock();
         }
     }
 
@@ -127,14 +104,13 @@ public abstract class ByteBufferVolume implements Volume {
 
     @Override
     public DataInput getDataInput(long offset) {
-        return new ByteBufferVolumeDataInput(slices, offset, sliceShift, sliceSizeModMask);
+        return new ByteBufferVolumeDataInput(offset);
     }
 
     @Override
     public DataOutput getDataOutput(long offset) {
-        return new ByteBufferVolumeDataOutput(slices, offset, sliceShift, sliceSizeModMask);
+        return new ByteBufferVolumeDataOutput(offset);
     }
-
 
     /**
      * Hack to unmap MappedByteBuffer.
@@ -180,49 +156,36 @@ public abstract class ByteBufferVolume implements Volume {
     // Workaround for File locking after .close() on Windows.
     private static boolean windowsWorkaround = System.getProperty("os.name").toLowerCase().startsWith("win");
 
-    private static final class ByteBufferVolumeDataInput extends VolumeDataInput {
+    private final class ByteBufferVolumeDataInput extends VolumeDataInput {
 
-        protected final int sliceShift;
-        protected final int sliceSizeModMask;
-        protected final ByteBuffer[] slices;
-
-        public ByteBufferVolumeDataInput(ByteBuffer[] slices, long offset, int sliceShift, int sliceSizeModMask) {
+        public ByteBufferVolumeDataInput(long offset) {
             super(offset);
-            this.sliceShift = sliceShift;
-            this.sliceSizeModMask = sliceSizeModMask;
-            this.slices = slices;
         }
 
-        @Override
-        public void readFully(byte[] b, int off, int len) throws IOException {
-            int n = 0;
-			ByteBuffer buffer = this.slices[(int) (this.position.get() >>> sliceShift)].duplicate();
-			buffer.position((int) (position.get() & sliceSizeModMask));
-			buffer.get(b, off, len);
-			position.getAndAdd(len);
+        public byte readByte() throws IOException {
+            if (slices.length == 0) {
+                throw new EOFException("Output reached end of volume");
+            }
+            long offset = position.getAndIncrement();
+            ByteBuffer buffer = slices[(int)(offset >>> sliceShift)].asReadOnlyBuffer();
+            buffer.position((int) (offset & sliceSizeModMask));
+            return buffer.get();
         }
     }
 
-    private static final class ByteBufferVolumeDataOutput extends VolumeDataOutput {
+    private final class ByteBufferVolumeDataOutput extends VolumeDataOutput {
 
-        protected final ByteBuffer[] slices;
-        protected final int sliceShift;
-        protected final int sliceSizeModMask;
-
-        public ByteBufferVolumeDataOutput(ByteBuffer[] slices, long offset, int sliceShift, int sliceSizeModMask) {
+        public ByteBufferVolumeDataOutput(long offset) {
             super(offset);
-            this.slices = slices;
-            this.sliceShift = sliceShift;
-            this.sliceSizeModMask = sliceSizeModMask;
         }
 
         @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            final ByteBuffer b1 = slices[(int) (position.get() >>> sliceShift)].duplicate();
-            int bufPos = (int) (position.get() & sliceSizeModMask);
-            b1.position(bufPos);
-            b1.put(b, off, len);
-            position.addAndGet(len);
+        public void writeByte(int v) throws IOException {
+            ensureAvailable(position.get() + 1);
+            long offset = position.getAndIncrement();
+            final ByteBuffer b = slices[(int)(offset >>> sliceShift)].duplicate();
+            b.position((int)(offset & sliceSizeModMask));
+            b.put((byte)v);
         }
     }
 }

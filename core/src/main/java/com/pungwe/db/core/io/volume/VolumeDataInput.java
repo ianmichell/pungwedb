@@ -25,10 +25,13 @@ public abstract class VolumeDataInput implements DataInput {
     }
 
     @Override
-    public byte readByte() throws IOException {
-        byte[] b = new byte[1];
-        readFully(b, 0, 1);
-        return ByteBuffer.wrap(b).get();
+    public void readFully(byte[] b, int off, int len) throws IOException {
+        if (off < 0 || len < 0 || len - off < 0) {
+            throw new IndexOutOfBoundsException("off and len must be positive values");
+        }
+        for (int i = off; i < len; i++) {
+            b[i] = readByte();
+        }
     }
 
     @Override

@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 
+// FIXME: This should be deprecated...
 /**
  * Created by 917903 on 24/05/2016.
  */
@@ -24,7 +25,7 @@ public class MemoryMappedVolume extends ByteBufferVolume {
     public MemoryMappedVolume(String name, File file, boolean readOnly, int sliceShift, long positionLimit)
         throws IOException {
         super(name, readOnly, sliceShift, positionLimit);
-        this.randomAccessFile = new RandomAccessFile(file, "rw");
+        this.randomAccessFile = new RandomAccessFile(file, readOnly ? "r" : "rw");
     }
 
     @Override
