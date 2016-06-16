@@ -18,7 +18,12 @@ public class MemoryMappedVolume extends ByteBufferVolume {
 
     public MemoryMappedVolume(String name, File file, boolean readOnly, int sliceShift)
             throws IOException {
-        super(name, readOnly, sliceShift);
+        this(name, file, readOnly, sliceShift, -1l);
+    }
+
+    public MemoryMappedVolume(String name, File file, boolean readOnly, int sliceShift, long positionLimit)
+        throws IOException {
+        super(name, readOnly, sliceShift, positionLimit);
         this.randomAccessFile = new RandomAccessFile(file, "rw");
     }
 
@@ -58,11 +63,6 @@ public class MemoryMappedVolume extends ByteBufferVolume {
         if (lock != null) {
             lock.close();
         }
-    }
-
-    @Override
-    public long getPositionLimit() {
-        return -1;
     }
 
     @Override

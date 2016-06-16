@@ -24,22 +24,29 @@ public abstract class ByteBufferVolume implements Volume {
     protected final int sliceShift;
     protected final int sliceSizeModMask;
     protected final int sliceSize;
+    protected final long positionLimit;
 
     protected volatile ByteBuffer[] slices = new ByteBuffer[0];
 
     protected final boolean readOnly;
 
-    public ByteBufferVolume(String name, boolean readOnly, int sliceShift) {
+    public ByteBufferVolume(String name, boolean readOnly, int sliceShift, long positionLimit) {
         this.name = name;
         this.readOnly = readOnly;
         this.sliceShift = (sliceShift < Constants.MIN_PAGE_SHIFT ? Constants.MIN_PAGE_SHIFT : sliceShift);
         this.sliceSize = 1 << this.sliceShift; // MAX_SIZE is 2GB
         this.sliceSizeModMask = sliceSize - 1;
+        this.positionLimit = positionLimit;
     }
 
     @Override
     public String name() {
         return this.name;
+    }
+
+    @Override
+    public long getPositionLimit() {
+        return positionLimit;
     }
 
     public abstract ByteBuffer makeNewBuffer(long offset) throws IOException;

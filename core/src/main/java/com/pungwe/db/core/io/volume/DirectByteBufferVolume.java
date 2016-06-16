@@ -12,12 +12,10 @@ import java.nio.MappedByteBuffer;
 public class DirectByteBufferVolume extends ByteBufferVolume {
 
     private boolean closed;
-    private long maxSize;
     private long currentSize;
 
     public DirectByteBufferVolume(String name, boolean readOnly, int sliceShift, long maxSize) {
-        super(name, readOnly, sliceShift);
-        this.maxSize = maxSize;
+        super(name, readOnly, sliceShift, maxSize);
     }
 
     @Override
@@ -25,10 +23,10 @@ public class DirectByteBufferVolume extends ByteBufferVolume {
         try {
             lock();
             int size = sliceSize;
-            if (maxSize > 0) {
+            if (positionLimit > 0) {
                 // Maximum 2GB... Integer.MAX_VALUE... Would be lovely if the JVM could
                 // address more... :(
-                size = (int)Math.min(sliceSize, maxSize - currentSize);
+                size = (int)Math.min(sliceSize, positionLimit - currentSize);
             }
             ByteBuffer buffer = ByteBuffer.allocateDirect(size);
             currentSize = size;
@@ -38,11 +36,6 @@ public class DirectByteBufferVolume extends ByteBufferVolume {
         } finally {
             unlock();
         }
-    }
-
-    @Override
-    public long getPositionLimit() {
-        return maxSize;
     }
 
     @Override

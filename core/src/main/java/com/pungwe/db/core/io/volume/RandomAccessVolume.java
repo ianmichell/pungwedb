@@ -14,14 +14,26 @@ public final class RandomAccessVolume implements Volume {
 
     private final String name;
     private RandomAccessFile randomAccessFile;
+    private final boolean readOnly;
+    private final long positionLimit;
 
     public RandomAccessVolume(File file) throws IOException {
         this(file.getPath(), file);
     }
 
     public RandomAccessVolume(String name, File file) throws IOException {
+        this(name, file, false);
+    }
+
+    public RandomAccessVolume(String name, File file, boolean readOnly) throws IOException {
+        this(name, file, readOnly, -1l);
+    }
+
+    public RandomAccessVolume(String name, File file, boolean readOnly, long positionLimit) throws IOException {
         this.name = name;
         randomAccessFile = new RandomAccessFile(file, "rw");
+        this.readOnly = readOnly;
+        this.positionLimit = positionLimit;
     }
 
     @Override
@@ -45,22 +57,26 @@ public final class RandomAccessVolume implements Volume {
 
     @Override
     public DataOutput getDataOutput(long offset) {
+        if (readOnly) {
+            throw new IllegalArgumentException("Volume is read only");
+        }
         // FIXME: Try locking the channel, so that we can force thread safety
         final FileChannel channel = randomAccessFile.getChannel();
-        return new RandomAccessDataOutput(name, channel, offset);
+        return new RandomAccessDataOutput(channel, offset);
     }
 
     @Override
     public DataInput getDataInput(long offset) {
         final FileChannel channel = randomAccessFile.getChannel();
-        return new RandomAccessDataInput(name, channel, offset);
+        return new RandomAccessDataInput(channel, offset);
     }
 
     @Override
     public long getPositionLimit() {
-        return -1;
+        return positionLimit;
     }
 
+    /* FIXME: We need to change this to include length */
     @Override
     public void ensureAvailable(long offset) throws IOException {
     }
@@ -87,6 +103,9 @@ public final class RandomAccessVolume implements Volume {
     }
 
     private FileLock lock(FileChannel channel, long startOffset, long endOffset, boolean shared) throws IOException {
+        if (endOffset > positionLimit) {
+            throw new IOException("File position limit has been reached");
+        }
         FileLock lock = null;
         long time = System.currentTimeMillis();
         while ((lock = (endOffset == -1 ? channel.tryLock() : channel.tryLock(startOffset, endOffset, shared))) == null) {
@@ -114,12 +133,10 @@ public final class RandomAccessVolume implements Volume {
     private class RandomAccessDataInput extends VolumeDataInput {
 
         private final FileChannel fileChannel;
-        private final String fileId;
 
-        public RandomAccessDataInput(String fileId, FileChannel fileChannel, long position) {
+        public RandomAccessDataInput(FileChannel fileChannel, long position) {
             super(position);
             this.fileChannel = fileChannel;
-            this.fileId = fileId;
         }
 
         @Override
@@ -138,12 +155,10 @@ public final class RandomAccessVolume implements Volume {
     private class RandomAccessDataOutput extends VolumeDataOutput {
 
         private final FileChannel fileChannel;
-        private final String fileId;
 
-        public RandomAccessDataOutput(String fileId, FileChannel fileChannel, long offset) {
+        public RandomAccessDataOutput(FileChannel fileChannel, long offset) {
             super(offset);
             this.fileChannel = fileChannel;
-            this.fileId = fileId;
         }
 
         @Override

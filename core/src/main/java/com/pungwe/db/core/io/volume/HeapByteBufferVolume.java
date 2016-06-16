@@ -10,12 +10,10 @@ import java.nio.MappedByteBuffer;
 public class HeapByteBufferVolume extends ByteBufferVolume {
 
     private boolean closed;
-    private final long maxSize;
     private long currentSize;
 
     public HeapByteBufferVolume(String name, boolean readOnly, int sliceShift, long maxSize) {
-        super(name, readOnly, sliceShift);
-        this.maxSize = maxSize;
+        super(name, readOnly, sliceShift, maxSize);
     }
 
     @Override
@@ -24,10 +22,10 @@ public class HeapByteBufferVolume extends ByteBufferVolume {
             lock();
             int size = sliceSize;
             // FIXME: This is going to cause problems...
-            if (maxSize > 0) {
+            if (positionLimit > 0) {
                 // Maximum 2GB... Integer.MAX_VALUE... Would be lovely if the JVM could
                 // address more... :(
-                size = (int)Math.min(sliceSize, maxSize - currentSize);
+                size = (int)Math.min(sliceSize, positionLimit - currentSize);
             }
             ByteBuffer buffer = ByteBuffer.allocate(size);
             currentSize = size;
@@ -37,11 +35,6 @@ public class HeapByteBufferVolume extends ByteBufferVolume {
         } finally {
             unlock();
         }
-    }
-
-    @Override
-    public long getPositionLimit() {
-        return maxSize;
     }
 
     @Override
