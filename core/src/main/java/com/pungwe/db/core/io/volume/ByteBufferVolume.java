@@ -162,14 +162,28 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
             super(offset);
         }
 
-        public byte readByte() throws IOException {
-            if (slices.length == 0) {
-                throw new EOFException("Output reached end of volume");
+        @Override
+        public void readFully(byte[] b, int off, int len) throws IOException {
+            long endOffset = position.longValue() + (len - off);
+            if (endOffset > length()) {
+                throw new EOFException("Reached the end of the volume");
             }
-            long offset = position.getAndIncrement();
-            ByteBuffer buffer = slices[(int)(offset >>> sliceShift)].asReadOnlyBuffer();
-            buffer.position((int) (offset & sliceSizeModMask));
-            return buffer.get();
+            int startPos = (int)(position.get() >>> sliceShift);
+            int endPos = (int)(endOffset >>> sliceShift);
+            int remaining = len - off;
+            for (int i = startPos; i < endPos + 1; i++) {
+                if (remaining <= 0) {
+                    break;
+                }
+                int s = (int)position.get() & sliceSizeModMask;
+                int n = Math.min((sliceSize - s), remaining);
+                ByteBuffer in = slices[i];
+                in.position(s);
+                in.get(b, off, n);
+                position.getAndAdd(n);
+                off += n;
+                remaining -= n;
+            }
         }
     }
 
@@ -180,12 +194,28 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
         }
 
         @Override
-        public void writeByte(int v) throws IOException {
-            ensureAvailable(position.get() + 1);
-            long offset = position.getAndIncrement();
-            final ByteBuffer b = slices[(int)(offset >>> sliceShift)].duplicate();
-            b.position((int)(offset & sliceSizeModMask));
-            b.put((byte)v);
+        public void write(byte[] b, int off, int len) throws IOException {
+            long endOffset = position.longValue() + (len - off);
+            ensureAvailable(endOffset); // Ensure we have enough space
+            int startPos = (int)(position.get() >>> sliceShift);
+            int endPos = (int)(endOffset >>> sliceShift);
+            // start position
+            int remaining = len - off;
+            for (int i = startPos; i < endPos + 1; i++) {
+                if (remaining <= 0) {
+                    break;
+                }
+                int s = (int)position.get() & sliceSizeModMask;
+                ByteBuffer out = slices[i];
+                out.position(s);
+                int n = Math.min((sliceSize - s), remaining);
+                for (int j = off; j < n; j++) {
+                    out.put(b[j]);
+                }
+                off += n;
+                remaining -= n;
+                position.addAndGet(n);
+            }
         }
     }
 }

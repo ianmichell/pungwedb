@@ -31,11 +31,10 @@ public abstract class VolumeDataOutput implements DataOutput {
     public void writeBoolean(boolean v) throws IOException {
         write(v ? 1 : 0);
     }
+
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
-        for (int i = off; i < len; i++) {
-            write(b[i]);
-        }
+    public void writeByte(int v) throws IOException {
+        write(new byte[] { (byte)v }, 0 ,1);
     }
 
     @Override
