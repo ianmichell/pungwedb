@@ -33,7 +33,8 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
     public ByteBufferVolume(String name, boolean readOnly, int sliceShift, long positionLimit) {
         this.name = name;
         this.readOnly = readOnly;
-        this.sliceShift = (sliceShift < Constants.MIN_PAGE_SHIFT ? Constants.MIN_PAGE_SHIFT : sliceShift);
+//        this.sliceShift = (sliceShift < Constants.MIN_PAGE_SHIFT ? Constants.MIN_PAGE_SHIFT : sliceShift);
+        this.sliceShift = sliceShift;
         this.sliceSize = 1 << this.sliceShift; // MAX_SIZE is 2GB
         this.sliceSizeModMask = sliceSize - 1;
         this.positionLimit = positionLimit;
@@ -179,10 +180,12 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
                 int n = Math.min((sliceSize - s), remaining);
                 ByteBuffer in = slices[i];
                 in.position(s);
-                in.get(b, off, n);
-                position.getAndAdd(n);
+                for (int j = off; j < (off + n); j++) {
+                    b[j] = in.get();
+                }
                 off += n;
                 remaining -= n;
+                position.addAndGet(n);
             }
         }
     }
@@ -209,7 +212,7 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
                 ByteBuffer out = slices[i];
                 out.position(s);
                 int n = Math.min((sliceSize - s), remaining);
-                for (int j = off; j < n; j++) {
+                for (int j = off; j < (off + n); j++) {
                     out.put(b[j]);
                 }
                 off += n;
