@@ -25,7 +25,7 @@ public class LZ4Serializer implements Serializer {
         DataOutputStream dos = new DataOutputStream(bytes);
         serializer.serialize(dos, value);
         byte[] result = compressor.compress(bytes.toByteArray());
-        out.writeUTF("LZ4");
+        out.writeUTF(getKey());
         out.writeInt(result.length);
         out.writeInt(bytes.size());
         out.write(result);
@@ -36,7 +36,7 @@ public class LZ4Serializer implements Serializer {
         LZ4Factory factory = LZ4Factory.fastestJavaInstance();
         LZ4FastDecompressor decompressor = factory.fastDecompressor();
         String type = in.readUTF();
-        if (!type.equalsIgnoreCase("LZ4")) {
+        if (!type.equalsIgnoreCase(getKey())) {
             throw new IOException("Invalid LZ4 data stream.");
         }
         int len = in.readInt();
@@ -47,5 +47,10 @@ public class LZ4Serializer implements Serializer {
         ByteArrayInputStream is = new ByteArrayInputStream(readBytes);
         DataInputStream dis = new DataInputStream(is);
         return serializer.deserialize(dis);
+    }
+
+    @Override
+    public String getKey() {
+        return "LZ4:" + serializer.getKey();
     }
 }

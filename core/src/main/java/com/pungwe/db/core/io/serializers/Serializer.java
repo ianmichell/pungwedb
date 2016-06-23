@@ -11,5 +11,5 @@ public interface Serializer {
 
     void serialize(DataOutput out, Object value) throws IOException;
     Object deserialize(DataInput in) throws IOException;
-
+    String getKey();
 }

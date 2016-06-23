@@ -5,11 +5,13 @@ import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 
-import java.io.*;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
-import java.lang.reflect.Array;
 
 /**
  * Created by ian on 25/05/2016.
@@ -35,7 +37,11 @@ public class ObjectSerializer implements Serializer {
 
     @Override
     public void serialize(DataOutput out, Object value) throws IOException {
+        out.writeUTF(getKey());
+        writeValue(out, value);
+    }
 
+    private void writeValue(DataOutput out, Object value) throws IOException {
         if (value == null) {
             out.writeByte(NULL);
             return;
@@ -64,11 +70,11 @@ public class ObjectSerializer implements Serializer {
         } else if (Float.class.isAssignableFrom(value.getClass())) {
             out.writeByte(DECIMAL);
             out.writeDouble((Float) value);
-        // FIXME: We can probably store more information about this...
+            // FIXME: We can probably store more information about this...
         } else if (BigDecimal.class.isAssignableFrom(value.getClass())) {
             out.writeByte(BIG_DECIMAL);
             out.writeUTF(((BigDecimal) value).toString());
-        // FIXME: We can probably store more information about this...
+            // FIXME: We can probably store more information about this...
         } else if (BigInteger.class.isAssignableFrom(value.getClass())) {
             out.writeByte(BIG_NUMBER);
             out.writeUTF(((BigInteger) value).toString());
@@ -90,9 +96,9 @@ public class ObjectSerializer implements Serializer {
             }
         } else if (Map.Entry.class.isAssignableFrom(value.getClass())) {
             out.writeByte(KEY);
-            serialize(out, ((Map.Entry) value).getKey());
+            writeValue(out, ((Map.Entry) value).getKey());
             out.writeByte(VALUE);
-            serialize(out, ((Map.Entry) value).getValue());
+            writeValue(out, ((Map.Entry) value).getValue());
         } else if (Date.class.isAssignableFrom(value.getClass())) {
             // We want to write an appropriate date, so for now set this to null and
             // we will create a special date object to store all the correct and relevant time values.
@@ -109,7 +115,6 @@ public class ObjectSerializer implements Serializer {
             throw new IllegalArgumentException(String.format("%s is not a supported data type",
                     value.getClass().getName()));
         }
-        // FIXME: Do dates too! They should be timezone compliant!
     }
 
     private void writeDate(DataOutput out, Date date) throws IOException {
@@ -131,11 +136,19 @@ public class ObjectSerializer implements Serializer {
 
     private void writeEntry(DataOutput out, Object entry) throws IOException {
         out.writeByte(ENTRY);
-        serialize(out, entry);
+        writeValue(out, entry);
     }
 
     @Override
     public Object deserialize(DataInput in) throws IOException {
+        String type = in.readUTF();
+        if (!type.equalsIgnoreCase(getKey())) {
+            throw new IOException("Invalid LZ4 data stream.");
+        }
+        return readValue(in);
+    }
+
+    private Object readValue(DataInput in) throws IOException {
         // Fetch the first byte!
         byte type = in.readByte();
         switch (type) {
@@ -171,7 +184,7 @@ public class ObjectSerializer implements Serializer {
             }
             case BOOLEAN: {
                 byte b = in.readByte();
-                return b == 1 ? true : false;
+                return b == 1;
             }
             case TIMESTAMP: {
                 return readTimestamp(in);
@@ -189,13 +202,13 @@ public class ObjectSerializer implements Serializer {
                     if (keyType != KEY) {
                         throw new IOException("Expected type to be that of KEY");
                     }
-                    Object key = deserialize(in);
+                    Object key = readValue(in);
                     // Extract key value
                     byte valueType = in.readByte();
                     if (valueType != VALUE) {
                         throw new IOException("Expected to find data type of VALUE");
                     }
-                    Object value = deserialize(in);
+                    Object value = readValue(in);
                     map.put(key, value);
                 }
                 return map;
@@ -208,7 +221,7 @@ public class ObjectSerializer implements Serializer {
                     if (entryType != ENTRY) {
                         throw new IOException("Expected an ENTRY('E')");
                     }
-                    array.add(deserialize(in));
+                    array.add(readValue(in));
                 }
                 return array;
             }
@@ -221,9 +234,14 @@ public class ObjectSerializer implements Serializer {
         throw new IOException("Could not find a recognized object");
     }
 
-    private static DateTime readTimestamp(DataInput input) throws IOException {
+    private DateTime readTimestamp(DataInput input) throws IOException {
         String dateString = input.readUTF();
         DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
         return fmt.parseDateTime(dateString);
+    }
+
+    @Override
+    public String getKey() {
+        return "OBJ";
     }
 }

@@ -1,15 +1,8 @@
 package com.pungwe.db.core.utils;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.io.ByteArrayDataOutput;
-
 import java.io.*;
-import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;

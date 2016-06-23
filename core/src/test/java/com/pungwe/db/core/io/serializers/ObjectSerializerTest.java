@@ -1,6 +1,7 @@
 package com.pungwe.db.core.io.serializers;
 
 import org.joda.time.DateTime;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
@@ -94,10 +95,10 @@ public class ObjectSerializerTest {
                 Calendar c = Calendar.getInstance();
                 c.setTime((Date) entry.getValue());
                 DateTime dateTime = new DateTime(c);
-                assertEquals("Time should match", 0, dateTime.compareTo((DateTime) value));
+                Assert.assertEquals("Time should match", 0, dateTime.compareTo((DateTime) value));
             } else if (entry.getValue() instanceof Calendar) {
                 DateTime dateTime = new DateTime((Calendar)entry.getValue());
-                assertEquals("Time should match", 0, dateTime.compareTo((DateTime) value));
+                Assert.assertEquals("Time should match", 0, dateTime.compareTo((DateTime) value));
             } else {
                 assertEquals("Expected values to match", entry.getValue(), value);
             }
