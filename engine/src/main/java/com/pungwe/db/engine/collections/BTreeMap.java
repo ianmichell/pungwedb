@@ -32,9 +32,6 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     private volatile long rootPointer;
     protected AtomicLong size;
 
-    private final static byte NODE_START = '[';
-    private final static byte NODE_END = ']';
-
     public BTreeMap(Store store, Comparator<K> keyComparator, long maxNodeSize) throws IOException {
         this(store, keyComparator, new ObjectSerializer(), new ObjectSerializer(), maxNodeSize, -1);
     }

@@ -1,5 +1,7 @@
 package com.pungwe.db.core.types;
 
+import com.pungwe.db.core.concurrent.Promise;
+
 import java.util.Map;
 import java.util.Set;
 
@@ -16,33 +18,36 @@ public interface Database {
     /**
      * Gets a list of bucket names
      *
-     * @return the list of buckets stored in this database
+     * @return a promise with the list of buckets stored in this database on completion
      */
-    Set<String> getBucketNames();
+    Promise<Set<String>> getBucketNames();
 
     /**
      * Gets an instanceof of a bucket by name
      *
      * @param name the name of the bucket
      *
-     * @return an instance of the bucket
+     * @return a promise with an instance of the requested bucket
      */
-    Bucket getBucket(String name);
+    Promise<Bucket<?>> getBucket(String name);
 
     /**
      * Creates a new bucket with the supplied settings
      *
      * @param name the name of the new bucket
      * @param options the options used to create teh bucket
-     * @return the instance of the newly created bucket
+     *
+     * @return a promise for the instance of the newly created bucket
      */
-    Bucket createBucket(String name, Map<String, Object> options);
+    Promise<Bucket<?>> createBucket(String name, Map<String, Object> options);
 
     /**
      * Drops a database bucket
      *
      * @param name the name of the bucket to be dropped
+     *
+     * @return a promise with a void result when the database is dropped.
      */
-    void dropBucket(String name);
+    Promise<Void> dropBucket(String name);
 
 }

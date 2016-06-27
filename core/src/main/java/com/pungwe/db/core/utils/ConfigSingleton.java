@@ -48,6 +48,33 @@ public final class ConfigSingleton extends AbstractMap<String, Object> {
         return config.containsValue(value);
     }
 
+    public boolean containsPath(Object path) {
+        String[] keys = ((String)path).split("\\.");
+        Map<String, Object> config = this.config;
+        for (int i = 0; i < keys.length - 1; i++) {
+            Object v = config.get(keys[i]);
+            if (v instanceof Map) {
+                config = (Map<String, Object>) v;
+            }
+        }
+        return config.containsKey(keys[keys.length - 1]);
+    }
+
+    public Object getByPath(String path) {
+        if (!containsPath(path)) {
+            return null;
+        }
+        String[] keys = ((String)path).split("\\.");
+        Map<String, Object> config = this.config;
+        for (int i = 0; i < keys.length - 1; i++) {
+            Object v = config.get(keys[i]);
+            if (v instanceof Map) {
+                config = (Map<String, Object>) v;
+            }
+        }
+        return config.get(keys[keys.length - 1]);
+    }
+
     @Override
     public boolean isEmpty() {
         return config.isEmpty();

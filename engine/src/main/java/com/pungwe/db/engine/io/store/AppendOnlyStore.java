@@ -298,6 +298,7 @@ public class AppendOnlyStore implements Store {
         protected final AtomicLong firstPosition = new AtomicLong(0);
         protected final AtomicLong nextPosition = new AtomicLong(0);
         protected AtomicLong size = new AtomicLong(0);
+        protected AtomicLong metaData = new AtomicLong(0);
 
         public Header(String store, int blockSize, long firstPosition, long currentPosition, long size) {
             this.store = store;
