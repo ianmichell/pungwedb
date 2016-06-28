@@ -30,12 +30,12 @@ public class MemoryBucket implements Bucket<DBObject<String, Object>> {
     }
 
     @Override
-    public Promise<Boolean> containsIndex(final String name) {
-        return Promise.when(() -> false);
+    public Promise<Void> createIndex(String name, Map<String, Object> options) {
+        return null;
     }
 
     @Override
-    public Promise<Void> createIndex(String name, Map<String, Object> options) {
+    public Promise<Boolean> containsIndex(String name) {
         return null;
     }
 
@@ -56,6 +56,11 @@ public class MemoryBucket implements Bucket<DBObject<String, Object>> {
 
     @Override
     public Promise<QueryResult> find(Query query) {
+        return null;
+    }
+
+    @Override
+    public Promise<DBObject<String, Object>> findOne(Object id) {
         return null;
     }
 

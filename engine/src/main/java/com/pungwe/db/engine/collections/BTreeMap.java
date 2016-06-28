@@ -57,6 +57,10 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         }
     }
 
+    public long getPointer() {
+        return rootPointer;
+    }
+
     @Override
     public Entry<K, V> getEntry(K key) {
         lock.readLock().lock();
@@ -119,6 +123,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 parentNodes[pos++] = node;
 
             }
+
             // Last item is the leaf node
             LeafNode<K, Object> leaf = (LeafNode<K, Object>) node;
 
@@ -126,7 +131,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             boolean exists = leaf.hasKey(key);
             leaf.putValue(key, value, replace);
             // Node is not safe and must be split
-            if (leaf != null && maxNodeSize > -1 && ((LeafNode<K, Object>) leaf).keys.length > maxNodeSize) {
+            if (leaf != null && maxNodeSize > -1 && leaf.keys.length > maxNodeSize) {
                 split(Arrays.copyOf(parentNodes, parentNodes.length), pointers);
             } else {
                 saveNodes(parentNodes, pointers);
