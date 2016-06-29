@@ -6,11 +6,14 @@ import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.store.AppendOnlyStore;
 import com.pungwe.db.engine.io.store.DirectStore;
 import com.pungwe.db.engine.io.store.Store;
+import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -19,21 +22,16 @@ import java.util.concurrent.locks.ReentrantLock;
 public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
 
     /*
-     * Merge lock ensures that are are not modifying stuff during a merge...
-     */
-    private final ReentrantLock mergeLock = new ReentrantLock();
-
-    /*
      * Initialize a table of btree maps, so that we can retrieve data and merge indexes together...
      * Merging is obviously fairly straight forward. We simply tree.putAll(otherTree) and it will automatically handle
      * the merge. Then we reset the tables array to reflect that a tree has been merged.
      */
-    private volatile BTreeMap<K, V>[] tables = new BTreeMap[0];
+    private BTreeMap<K, V>[] tables = new BTreeMap[0];
 
     private final long maxIndexSize; // 1000 entries by default
 
     private final AppendOnlyStore store;
-    private final Store memoryStore;
+    private Store memoryStore;
 
     /*
      * Memory tree is the permanent memory resident btree. When it is full we flush to disk, or merge (or both)
@@ -48,23 +46,21 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
     /**
      * Creates an instance of this bLSM Tree.
      *
-     * @param memoryStore   the stored used to maintain the memory index
      * @param store         the store used to manage the on disk(?) indexes
      * @param keyComparator the key comparator
      * @param maxIndexSize  the maximum size of an index in memory
      * @param maxNodeSize   the maximum size of an index node (Branch or Leaf)
      * @throws IOException occurs when there is a problem reading or writing from a store.
      */
-    public BLSMTreeMap(Store memoryStore, AppendOnlyStore store, Comparator<K> keyComparator, long maxIndexSize,
+    public BLSMTreeMap(AppendOnlyStore store, Comparator<K> keyComparator, long maxIndexSize,
                        long maxNodeSize) throws IOException {
-        this(memoryStore, store, keyComparator, new ObjectSerializer(), new ObjectSerializer(), maxIndexSize,
+        this(store, keyComparator, new ObjectSerializer(), new ObjectSerializer(), maxIndexSize,
                 maxNodeSize, -1);
     }
 
     /**
      * Creates an instance of this bLSM Tree.
      *
-     * @param memoryStore     the stored used to maintain the memory index
      * @param store           the store used to manage the on disk(?) indexes
      * @param keyComparator   the key comparator
      * @param keySerializer   the serializer used for storing keys
@@ -73,17 +69,16 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @param maxNodeSize     the maximum size of an index node (Branch or Leaf)
      * @throws IOException occurs when there is a problem reading or writing from a store.
      */
-    public BLSMTreeMap(Store memoryStore, AppendOnlyStore store, Comparator<K> keyComparator,
+    public BLSMTreeMap(AppendOnlyStore store, Comparator<K> keyComparator,
                        Serializer keySerializer, Serializer valueSerializer, long maxIndexSize, long maxNodeSize)
             throws IOException {
-        this(memoryStore, store, keyComparator, keySerializer, valueSerializer, maxIndexSize,
+        this(store, keyComparator, keySerializer, valueSerializer, maxIndexSize,
                 maxNodeSize, -1l);
     }
 
     /**
      * Creates an instance of this bLSM Tree.
      *
-     * @param memoryStore     the stored used to maintain the memory index
      * @param store           the store used to manage the on disk(?) indexes
      * @param keyComparator   the key comparator
      * @param keySerializer   the serializer used for storing keys
@@ -93,7 +88,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @param pointer         the pointer to the meta data for this tree.
      * @throws IOException occurs when there is a problem reading or writing from a store.
      */
-    public BLSMTreeMap(Store memoryStore, AppendOnlyStore store, Comparator<K> keyComparator,
+    public BLSMTreeMap(AppendOnlyStore store, Comparator<K> keyComparator,
                        Serializer keySerializer, Serializer valueSerializer, long maxIndexSize, long maxNodeSize,
                        long pointer) throws IOException {
         super(keyComparator);
@@ -102,7 +97,6 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
         this.valueSerializer = valueSerializer;
         this.maxNodeSize = maxNodeSize;
         this.pointer = pointer; // FIXME: Load meta data from pointer!
-        this.memoryStore = memoryStore;
         this.maxIndexSize = maxIndexSize;
         this.memoryTree = createNewMemoryTree();
         // Load meta data from pointer
@@ -140,6 +134,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @throws IOException an exception when there is a problem reading or writing.
      */
     private BTreeMap<K, V> createNewMemoryTree() throws IOException {
+        memoryStore = new DirectStore(new HeapByteBufferVolume("memory", false, 20, 10 << 20));
         return new BTreeMap<>(memoryStore, (Comparator<K>) comparator(), keySerializer, valueSerializer, maxNodeSize);
     }
 
@@ -201,123 +196,94 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      */
     private void flush() throws IOException {
         // copy the reference to the memoryTree
-        final BTreeMap<K, V> treeToFlush = memoryTree;
-        // Create a write lock!
-        lock.writeLock().lock();
+        lock.readLock().lock();
         try {
-            // Immediately replace the memory tree.
-            memoryTree = createNewMemoryTree();
+            BTreeMap<K, V> treeToFlush = memoryTree;
 
-            // otherwise store it and return it's pointer.
             BTreeMap<K, V>[] newTable = tables == null ? new BTreeMap[1] : Arrays.copyOf(tables, tables.length + 1);
+
             // Add new index to end of tables
             newTable[newTable.length - 1] = createStoredTree();
             // Tree is merged into the new disk tree and at the same time flushed to the store
             newTable[newTable.length - 1].putAll(treeToFlush);
 
             tables = newTable;
-            storePagesOnDisk();
+
+            // Queue a background merger...
             mergeTrees();
-        } catch (IOException ex) {
-            // FIXME: do something here, if we get IO errors we have other problems...
         } finally {
-            // unlock
-            lock.writeLock().unlock();
+            lock.readLock().unlock();
         }
-        /* Create and execute a promise that will flush the tree to disk (or merge it if there is one of
-         * the same size as the tree being flushed.
-         */
-        /*Promise.when(() -> {
-            // Lock for merge
-            mergeLock.lock();
-            // otherwise store it and return it's pointer.
-            BTreeMap<K, V>[] newTable = Arrays.copyOf(tables, tables.length + 1);
-            // Add new index to end of tables
-            newTable[tables.length] = createStoredTree();
-            // Tree is merged into the new disk tree and at the same time flushed to the store
-            newTable[tables.length].putAll(treeToFlush);
-            // Return an array of the new tree tables.
-            return newTable;
-        }).then(flushResult -> {
-            // Reset the tables
-            lock.readLock().lock();
-            try {
-                tables = flushResult;
-                storePagesOnDisk();
-            } catch (IOException ex) {
-                // FIXME: do something here, if we get IO errors we have other problems...
-            } finally {
-                lock.readLock().unlock();
-                mergeLock.unlock(); // unlock merge
-            }
-            mergeTrees();
-        }).fail(flushError -> {
-            // FIXME: Add some error handling here!
-            // Ensure that we unlock the merge lock or we're stuffed...
-            if (mergeLock.isLocked() && mergeLock.isHeldByCurrentThread()) {
-                mergeLock.unlock();
-            }
-        }).execute();*/
     }
 
     private void mergeTrees() {
-        // FIXME: Add a merge lock
         // Otherwise, merge the trees asynchronously into a new tree
-        Promise.when(() -> {
-            // Ensure we lock for merger!
-            mergeLock.lock();
+        final AtomicLong pointer = new AtomicLong(-1);
+        final AtomicInteger index = new AtomicInteger(-1);
+
+        lock.readLock().lock();
+        try {
             // If there are less than 2 tables, then don't do anything
             if (tables.length < 2) {
-                return null;
+                return;
             }
-            lock.readLock().lock();
+
             // Get the first and second indexes.
             final BTreeMap<K, V> first = tables[tables.length - 1];
             final BTreeMap<K, V> second = tables[tables.length - 2];
-            try {
-                // If the first table is smaller than the second, then do nothing...
-                if (first.sizeLong() < second.sizeLong()) {
-                    return null;
+
+            index.set(tables.length - 2);
+            pointer.set(second.getPointer());
+
+            Promise.when(() -> {
+                // Ensure we lock for merger!
+                lock.readLock().lock();
+                try {
+                    // If the first table is smaller than the second, then do nothing...
+                    if (first.sizeLong() < second.sizeLong()) {
+                        return null;
+                    }
+                } finally {
+                    lock.readLock().unlock();
                 }
-            } finally {
-                lock.readLock().unlock();
-            }
-            // Create a new tree
-            BTreeMap<K, V> newTree = createStoredTree();
-            lock.readLock().lock();
-            try {
-                // Add the second btree first
-                newTree.putAll(second);
-                // Add the first tree on top, replacing updated records with newer versions
-                newTree.putAll(first);
-                // Once all the records have been written then create a new tables array..
-                BTreeMap<K, V>[] newTables = Arrays.copyOf(tables, tables.length - 1);
-                // Set the last element of the table to be the new tree.
-                newTables[newTables.length - 1] = newTree;
-                // Return the new tables
-                return newTables;
-            } finally {
-                lock.readLock().unlock();
-            }
-        }).then(mergeResult -> {
-            lock.writeLock().lock();
-            try {
-                tables = mergeResult;
-                storePagesOnDisk();
-            } catch (IOException ex) {
-                // FIXME: do something here, if we get IO errors we have other problems...
-            } finally {
-                lock.writeLock().unlock();
-                mergeLock.unlock();
-            }
-            // Run a new merge.
-            mergeTrees();
-        }).fail(mergeError -> {
-            // FIXME: We need to sort this shit out...
-            if (mergeLock.isLocked() && mergeLock.isHeldByCurrentThread()) {
-                mergeLock.unlock();
-            }
-        }).execute(); // execute the merge
+                lock.writeLock().lock();
+                try {
+                    // Add the first tree on top, replacing updated records with newer versions
+                    second.putAll(first);
+                    // Once all the records have been written then create a new tables array..
+                    BTreeMap<K, V>[] newTables = Arrays.copyOf(tables, tables.length - 1);
+                    // Return the new tables
+                    return newTables;
+                } finally {
+                    lock.writeLock().unlock();
+                }
+            }).then(mergeResult -> {
+                lock.writeLock().lock();
+                try {
+                    if (mergeResult == null) {
+                        return;
+                    }
+                    tables = mergeResult;
+                    storePagesOnDisk();
+                } catch (IOException ex) {
+                    // FIXME: do something here, if we get IO errors we have other problems...
+                } finally {
+                    lock.writeLock().unlock();
+                }
+                // Run a new merge.
+                mergeTrees();
+            }).fail(mergeError -> {
+                try {
+                    tables[index.get()] = treeFromPointer(pointer.get());
+                } catch (IOException ex) {
+                    // log here. Potentially database shutdown...
+                }
+            }).execute(); // execute the merge
+        } finally {
+            lock.readLock().unlock();
+        }
+
+
     }
 
     /**

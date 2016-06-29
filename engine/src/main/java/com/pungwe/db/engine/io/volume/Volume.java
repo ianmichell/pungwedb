@@ -28,5 +28,4 @@ public interface Volume extends Closeable {
     void ensureAvailable(long offset) throws IOException;
     boolean isClosed();
     void clear(long startOffset, long endOffset) throws IOException;
-
 }

@@ -1,6 +1,8 @@
 package com.pungwe.db.engine.io.store;
 
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.engine.io.volume.Volume;
+
 import java.io.IOException;
 
 /**
@@ -13,4 +15,5 @@ public interface Store extends Iterable<Object> {
     long size();
     void commit() throws IOException;
     void rollback() throws IOException;
+    void clear() throws IOException;
 }

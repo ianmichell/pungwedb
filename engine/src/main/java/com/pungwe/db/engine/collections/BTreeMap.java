@@ -1,5 +1,8 @@
 package com.pungwe.db.engine.collections;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.LoadingCache;
 import com.pungwe.db.engine.io.exceptions.DuplicateKeyException;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
@@ -24,6 +27,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     private static final Logger log = LoggerFactory.getLogger(BTreeMap.class);
 
+//    private final Cache<Long, BTreeNode<K,V>> nodeCache;
     private final Store store;
     private final Serializer keySerializer;
     private final Serializer valueSerializer;
@@ -50,10 +54,13 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         this.rootPointer = rootPointer;
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;
+        // Build a 1000 leaf cache...
+//        this.nodeCache = CacheBuilder.newBuilder().maximumSize(1000).build();
 
         if (rootPointer == -1) {
             LeafNode<K, V> root = new LeafNode<K, V>(keyComparator);
             this.rootPointer = store.add(root, nodeSerializer);
+//            this.nodeCache.put(this.rootPointer, root);
         }
     }
 
@@ -65,7 +72,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     public Entry<K, V> getEntry(K key) {
         lock.readLock().lock();
         try {
-            LeafNode<K, Object> leaf = (LeafNode<K, Object>) findLeaf((K) key);
+            LeafNode<K, Object> leaf = (LeafNode<K, Object>) findLeaf(key);
             if (leaf != null && leaf.hasKey(key)) {
                 Object value = leaf.getValue(key);
                 return new BaseMapEntry<>(key, (V) value, this);
@@ -82,12 +89,22 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     private LeafNode<K, V> findLeaf(K key) throws IOException {
         long current = rootPointer;
-        BTreeNode<K, V> node = (BTreeNode<K, V>) store.get(current, nodeSerializer);
+        BTreeNode<K, V> node = getNode(current);
         while (!(node instanceof LeafNode)) {
             current = ((BranchNode<K>) node).getChild((K) key);
-            node = (BTreeNode<K, V>) store.get(current, nodeSerializer);
+            node = getNode(current);
         }
         return (LeafNode<K, V>) node;
+    }
+
+    private BTreeNode<K, V> getNode(long position) throws IOException {
+//        BTreeNode<K, V> node = nodeCache.getIfPresent(position);
+//        if (node == null) {
+//            node = (BTreeNode<K,V>)store.get(position, nodeSerializer);
+//            nodeCache.put(position, node);
+//        }
+//        return node;
+        return (BTreeNode<K,V>)store.get(position, nodeSerializer);
     }
 
     @Override
@@ -104,13 +121,13 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             BTreeNode<K, V>[] parentNodes = new BTreeNode[1];
 
             int pos = 0;
-            BTreeNode<K, V> node = (BTreeNode<K, V>) store.get(current, nodeSerializer);
+            BTreeNode<K, V> node = getNode(current);
             parentNodes[0] = node;
             pointers[pos] = current;
             pos++;
             while (!(node instanceof LeafNode)) {
                 current = ((BranchNode<K>) node).getChild(key);
-                node = (BTreeNode<K, V>) store.get(current, nodeSerializer);
+                node = getNode(current);
 
                 // Make sure we have space
                 if (pos == pointers.length) {
@@ -159,6 +176,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             BTreeNode<K, V> node = nodes[i];
             BTreeNode<K, V> parent = i - 1 < 0 ? null : nodes[i - 1];
             long newPointer = store.update(current, node, nodeSerializer);
+//            nodeCache.invalidate(current);
+//            nodeCache.put(newPointer, node);
             if (current == rootPointer && newPointer != current) {
                 rootPointer = newPointer;
             }
@@ -182,13 +201,17 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         BTreeNode<K, ?> right = node.copyRightSplit(mid);
         long[] children = new long[2];
         children[0] = store.update(offset, left, nodeSerializer); // left replaces the old left...
+//        nodeCache.invalidate(offset);
+//        nodeCache.put(children[0], (BTreeNode<K, V>)left);
         children[1] = store.add(right, nodeSerializer);
+//        nodeCache.put(children[0], (BTreeNode<K, V>)right);
 
         // If we are already the root node, we create a new one...
         if (pointers.length == 1) {
             BranchNode<K> newRoot = new BranchNode<K>((Comparator<K>) comparator());
             newRoot.putChild(key, children);
             rootPointer = store.add(newRoot, nodeSerializer);
+//            nodeCache.put(rootPointer, (BTreeNode<K,V>)newRoot);
             return;
         }
 
@@ -313,24 +336,24 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
         private void findLeaf(K key) throws IOException {
             long current = map.rootPointer;
-            BTreeNode<K, ?> node = (BTreeNode<K, V>) map.store.get(current, map.nodeSerializer);
+            BTreeNode<K, ?> node = map.getNode(current);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
                 int pos = ((BranchNode<K>) node).findChildPosition((K) key);
                 stackPos.push(new AtomicInteger(pos + 1));
                 current = ((BranchNode<K>) node).children[pos];
-                node = (BTreeNode<K, V>) map.store.get(current, map.nodeSerializer);
+                node = (BTreeNode<K, V>) map.getNode(current);
             }
             leaf = (LeafNode<K, ?>) node;
         }
 
         private void pointToStart() throws IOException {
-            BTreeNode<K, ?> node = (BTreeNode<K, V>) map.store.get(map.rootPointer, map.nodeSerializer);
+            BTreeNode<K, ?> node = (BTreeNode<K, V>) map.getNode(map.rootPointer);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
                 stackPos.push(new AtomicInteger(1));
                 long child = ((BranchNode<K>) node).children[0];
-                node = (BTreeNode<K, V>) map.store.get(child, map.nodeSerializer);
+                node = (BTreeNode<K, V>) map.getNode(child);
             }
             leaf = (LeafNode<K, ?>) node;
         }
@@ -353,7 +376,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             int pos = stackPos.peek().getAndIncrement(); // get the immediate parent position.
             if (pos < parent.children.length) {
                 long t = parent.children[pos];
-                BTreeNode<K, ?> child = (BTreeNode<K, V>) map.store.get(t, map.nodeSerializer);
+                BTreeNode<K, ?> child = (BTreeNode<K, V>) map.getNode(t);
                 if (child instanceof LeafNode) {
                     leaf = (LeafNode<K, V>) child;
                     leafPos = 0;
@@ -503,13 +526,13 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
         private void findLeaf(K key) throws IOException {
             long current = map.rootPointer;
-            BTreeNode<K, ?> node = (BTreeNode<K, ?>)map.store.get(current, map.nodeSerializer);
+            BTreeNode<K, ?> node = (BTreeNode<K, ?>)map.getNode(current);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
                 int pos = ((BranchNode<K>) node).findChildPosition((K) key);
                 stackPos.push(new AtomicInteger(pos - 1));
                 current = ((BranchNode<K>) node).children[pos];
-                node = (BTreeNode<K, ?>)map.store.get(current, map.nodeSerializer);
+                node = (BTreeNode<K, ?>)map.getNode(current);
             }
             leaf = (LeafNode<K, ?>) node;
         }
@@ -517,12 +540,12 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         private void pointToStart() throws IOException {
             try {
                 //map.lock.readLock().lock();
-                BTreeNode<K, ?> node = (BTreeNode<K, ?>)map.store.get(map.rootPointer, map.nodeSerializer);
+                BTreeNode<K, ?> node = (BTreeNode<K, ?>)map.getNode(map.rootPointer);
                 while (!(node instanceof LeafNode)) {
                     stack.push((BranchNode<K>) node);
                     stackPos.push(new AtomicInteger(((BranchNode<K>) node).children.length - 2));
                     long child = ((BranchNode<K>) node).children[((BranchNode<K>) node).children.length - 1];
-                    node = (BTreeNode<K, ?>)map.store.get(child, map.nodeSerializer);
+                    node = (BTreeNode<K, ?>)map.getNode(child);
                 }
                 leaf = (LeafNode<K, ?>) node;
                 leafPos = leaf.keys.length - 1;
@@ -551,7 +574,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 int pos = stackPos.peek().getAndDecrement(); // get the immediate parent position.
                 if (pos >= 0) {
                     long t = parent.children[pos];
-                    BTreeNode<K, ?> child = (BTreeNode<K, ?>)map.store.get(t, map.nodeSerializer);
+                    BTreeNode<K, ?> child = (BTreeNode<K, ?>)map.getNode(t);
                     if (child instanceof LeafNode) {
                         leaf = (LeafNode<K, V>) child;
                         leafPos = leaf.keys.length - 1;

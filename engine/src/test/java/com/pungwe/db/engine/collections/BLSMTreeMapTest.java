@@ -22,15 +22,12 @@ public class BLSMTreeMapTest {
 
     private File tmpFile;
     private AppendOnlyStore store;
-    private Store memoryStore;
 
     @Before
     public void beforeTest() throws IOException {
         tmpFile = File.createTempFile("lsm_", ".db");
         Volume volume = new RandomAccessVolume("file", tmpFile, false);
         store = new AppendOnlyStore(volume);
-        // Create memory store of 10MB with 1MB segments.
-        memoryStore = new DirectStore(new HeapByteBufferVolume("memory", false, 20, 10 << 20));
     }
 
     @After
@@ -41,11 +38,11 @@ public class BLSMTreeMapTest {
     @Test
     public void testPutGet() throws Exception {
 
-        BLSMTreeMap<Long, String> map = new BLSMTreeMap<Long, String>(memoryStore, store, Long::compareTo, 100, 5);
-        for (long i = 0; i < 10000; i++) {
+        BLSMTreeMap<Long, String> map = new BLSMTreeMap<Long, String>(store, Long::compareTo, 10000, 100);
+        for (long i = 0; i < 10; i++) {
             map.put(i + 1l, "Hello World: " + (i + 1));
         }
 
-        assertEquals("Hello World: 555", map.get(555l));
+        assertEquals("Hello World: 7", map.get(7l));
     }
 }

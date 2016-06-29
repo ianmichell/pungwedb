@@ -1,20 +1,13 @@
 package com.pungwe.db.engine.io.store;
 
-import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
+import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.volume.Volume;
 import com.pungwe.db.engine.utils.Constants;
 
-
-import java.util.concurrent.atomic.AtomicLong;
-import java.io.IOException;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.DataOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.ByteArrayInputStream;
+import java.io.*;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -50,12 +43,13 @@ public class AppendOnlyStore implements Store {
         volume.ensureAvailable(header.getPosition() + size);
         long position = header.getNextPosition(pages * header.getBlockSize());
         return position;
-	}
+    }
 
     @Override
     public Object get(long pointer, Serializer serializer) throws IOException {
         readWriteLock.readLock().lock();
         try {
+
             DataInput input = this.volume.getDataInput(pointer);
             byte type = input.readByte();
             int length = input.readInt();
@@ -75,10 +69,11 @@ public class AppendOnlyStore implements Store {
 
     @Override
     public long add(Object value, Serializer serializer) throws IOException {
+
         byte[] data = writeRecord(serializer, value);
 
         int length = data.length + 21; // get length of record being added
-        int pages = (int)Math.ceil((double)length / header.getBlockSize());
+        int pages = (int) Math.ceil((double) length / header.getBlockSize());
 
         // We only want to lock the physcial position of the file to avoid seeking...
         readWriteLock.writeLock().lock();
@@ -90,7 +85,6 @@ public class AppendOnlyStore implements Store {
             if (previous == position) {
                 previous = -1;
             }
-
             // Write the record...
             DataOutput output = this.volume.getDataOutput(position);
             output.writeByte('R');
@@ -112,7 +106,7 @@ public class AppendOnlyStore implements Store {
 
     @Override
     public long update(long pointer, Object value, Serializer serializer)
-        throws IOException {
+            throws IOException {
         return add(value, serializer);
     }
 
@@ -166,7 +160,7 @@ public class AppendOnlyStore implements Store {
                 DataInput volumeInput = this.volume.getDataInput(current);
                 volumeInput.readFully(buffer);
                 byte firstByte = buffer[0];
-                if (firstByte == (byte)'H') {
+                if (firstByte == (byte) 'H') {
                     ByteArrayInputStream bytes = new ByteArrayInputStream(buffer);
                     DataInputStream input = new DataInputStream(bytes);
                     input.skip(1); // Skip the first byte
@@ -197,7 +191,7 @@ public class AppendOnlyStore implements Store {
             // Write a byte array with the header...
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             DataOutputStream out = new DataOutputStream(bytes);
-            out.writeByte((byte)'H');
+            out.writeByte((byte) 'H');
             out.writeUTF(header.getStore());
             out.writeInt(header.getBlockSize());
             out.writeLong(header.getFirstPosition());
@@ -211,6 +205,11 @@ public class AppendOnlyStore implements Store {
         } finally {
             readWriteLock.writeLock().unlock();
         }
+    }
+
+    @Override
+    public void clear() throws IOException {
+        // does nothing...
     }
 
     protected class RecordIterator implements Iterator<Object> {

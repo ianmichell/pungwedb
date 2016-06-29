@@ -275,6 +275,16 @@ public class DirectStore implements Store {
         }
     }
 
+    /**
+     * Resets the position of the store to the beginning
+     *
+     * @throws IOException
+     */
+    @Override
+    public void clear() throws IOException {
+        this.getHeader().setPosition(this.getHeader().getFirstPosition());
+    }
+
     @Override
     public Iterator<Object> iterator() {
         return new RecordIterator();
