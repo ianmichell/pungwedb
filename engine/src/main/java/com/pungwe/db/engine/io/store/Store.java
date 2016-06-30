@@ -16,4 +16,10 @@ public interface Store extends Iterable<Object> {
     void commit() throws IOException;
     void rollback() throws IOException;
     void clear() throws IOException;
+    Volume getVolume();
+    long getPosition();
+
+    default void appendVolume(Volume volume) {
+        this.getVolume().getDataOutput(getPosition()).
+    }
 }

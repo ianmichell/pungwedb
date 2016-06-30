@@ -286,6 +286,16 @@ public class DirectStore implements Store {
     }
 
     @Override
+    public Volume getVolume() {
+        return volume;
+    }
+
+    @Override
+    public long getPosition() {
+        return header.getPosition();
+    }
+
+    @Override
     public Iterator<Object> iterator() {
         return new RecordIterator();
     }

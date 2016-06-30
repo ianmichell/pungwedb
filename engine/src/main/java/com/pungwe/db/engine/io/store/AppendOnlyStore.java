@@ -6,6 +6,7 @@ import com.pungwe.db.engine.io.volume.Volume;
 import com.pungwe.db.engine.utils.Constants;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -52,15 +53,13 @@ public class AppendOnlyStore implements Store {
 
             DataInput input = this.volume.getDataInput(pointer);
             byte type = input.readByte();
-            int length = input.readInt();
             switch (type) {
                 case 'R':
                     break;
                 default:
                     throw new IOException("Invalid record entry at offset: " + pointer);
             }
-            long previousRecord = input.readLong();
-            long nextRecord = input.readLong();
+            input.skipBytes(20);
             return serializer.deserialize(input);
         } finally {
             readWriteLock.readLock().unlock();
@@ -85,15 +84,17 @@ public class AppendOnlyStore implements Store {
             if (previous == position) {
                 previous = -1;
             }
-            // Write the record...
+
+            // FIXME: We need a memory segment that this is written to, then pushed to disk on commit
+            ByteBuffer buffer = ByteBuffer.allocate(21 + data.length);
+            buffer.put((byte)'R');
+            buffer.putInt(data.length);
+            buffer.putLong(previous);
+            buffer.putLong(next);
+            buffer.put(data);
+
             DataOutput output = this.volume.getDataOutput(position);
-            output.writeByte('R');
-            output.writeInt(data.length);
-            // Previous record
-            output.writeLong(previous);
-            // Next record
-            output.writeLong(next);
-            output.write(data);
+            output.write(buffer.array());
 
             // Incremenent record size
             header.incrementSize();
@@ -117,6 +118,11 @@ public class AppendOnlyStore implements Store {
     public void rollback() throws IOException {
         // Find the most recently written header
         header = findHeader();
+    }
+
+    @Override
+    public long getPosition() {
+        return header.getPosition();
     }
 
     @Override
@@ -210,6 +216,11 @@ public class AppendOnlyStore implements Store {
     @Override
     public void clear() throws IOException {
         // does nothing...
+    }
+
+    @Override
+    public Volume getVolume() {
+        return volume;
     }
 
     protected class RecordIterator implements Iterator<Object> {

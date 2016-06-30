@@ -1,9 +1,7 @@
 package com.pungwe.db.engine.collections;
 
 import com.pungwe.db.engine.io.store.AppendOnlyStore;
-import com.pungwe.db.engine.io.store.DirectStore;
-import com.pungwe.db.engine.io.store.Store;
-import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
+import com.pungwe.db.engine.io.store.CachingStore;
 import com.pungwe.db.engine.io.volume.RandomAccessVolume;
 import com.pungwe.db.engine.io.volume.Volume;
 import org.junit.After;
@@ -12,6 +10,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.annotation.Documented;
 
 import static org.junit.Assert.assertEquals;
 
@@ -21,13 +20,13 @@ import static org.junit.Assert.assertEquals;
 public class BLSMTreeMapTest {
 
     private File tmpFile;
-    private AppendOnlyStore store;
+    private CachingStore store;
 
     @Before
     public void beforeTest() throws IOException {
         tmpFile = File.createTempFile("lsm_", ".db");
         Volume volume = new RandomAccessVolume("file", tmpFile, false);
-        store = new AppendOnlyStore(volume);
+        store = new CachingStore(new AppendOnlyStore(volume), 10000);
     }
 
     @After
@@ -38,8 +37,8 @@ public class BLSMTreeMapTest {
     @Test
     public void testPutGet() throws Exception {
 
-        BLSMTreeMap<Long, String> map = new BLSMTreeMap<Long, String>(store, Long::compareTo, 10000, 100);
-        for (long i = 0; i < 10; i++) {
+        BLSMTreeMap<Long, String> map = new BLSMTreeMap<Long, String>(store, Long::compareTo, 10000, 1024);
+        for (long i = 0; i < 20000; i++) {
             map.put(i + 1l, "Hello World: " + (i + 1));
         }
 

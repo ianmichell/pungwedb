@@ -3,9 +3,7 @@ package com.pungwe.db.engine.collections;
 import com.pungwe.db.core.concurrent.Promise;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
-import com.pungwe.db.engine.io.store.AppendOnlyStore;
-import com.pungwe.db.engine.io.store.DirectStore;
-import com.pungwe.db.engine.io.store.Store;
+import com.pungwe.db.engine.io.store.*;
 import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
 
 import java.io.*;
@@ -30,7 +28,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
 
     private final long maxIndexSize; // 1000 entries by default
 
-    private final AppendOnlyStore store;
+    private final Store store;
     private Store memoryStore;
 
     /*
@@ -52,7 +50,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @param maxNodeSize   the maximum size of an index node (Branch or Leaf)
      * @throws IOException occurs when there is a problem reading or writing from a store.
      */
-    public BLSMTreeMap(AppendOnlyStore store, Comparator<K> keyComparator, long maxIndexSize,
+    public BLSMTreeMap(Store store, Comparator<K> keyComparator, long maxIndexSize,
                        long maxNodeSize) throws IOException {
         this(store, keyComparator, new ObjectSerializer(), new ObjectSerializer(), maxIndexSize,
                 maxNodeSize, -1);
@@ -69,7 +67,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @param maxNodeSize     the maximum size of an index node (Branch or Leaf)
      * @throws IOException occurs when there is a problem reading or writing from a store.
      */
-    public BLSMTreeMap(AppendOnlyStore store, Comparator<K> keyComparator,
+    public BLSMTreeMap(Store store, Comparator<K> keyComparator,
                        Serializer keySerializer, Serializer valueSerializer, long maxIndexSize, long maxNodeSize)
             throws IOException {
         this(store, keyComparator, keySerializer, valueSerializer, maxIndexSize,
@@ -88,7 +86,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @param pointer         the pointer to the meta data for this tree.
      * @throws IOException occurs when there is a problem reading or writing from a store.
      */
-    public BLSMTreeMap(AppendOnlyStore store, Comparator<K> keyComparator,
+    public BLSMTreeMap(Store store, Comparator<K> keyComparator,
                        Serializer keySerializer, Serializer valueSerializer, long maxIndexSize, long maxNodeSize,
                        long pointer) throws IOException {
         super(keyComparator);
@@ -134,7 +132,9 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @throws IOException an exception when there is a problem reading or writing.
      */
     private BTreeMap<K, V> createNewMemoryTree() throws IOException {
-        memoryStore = new DirectStore(new HeapByteBufferVolume("memory", false, 20, 10 << 20));
+        // FIXME: Replace storage with builders as new new new is a bit messy
+        memoryStore = new CachingStore(new OffsetStore(new DirectStore(new HeapByteBufferVolume("memory", false,
+                20, 10 << 20)), store.getPosition(), 10 << 20), 1000);
         return new BTreeMap<>(memoryStore, (Comparator<K>) comparator(), keySerializer, valueSerializer, maxNodeSize);
     }
 
@@ -208,7 +208,6 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
             newTable[newTable.length - 1].putAll(treeToFlush);
 
             tables = newTable;
-
             // Queue a background merger...
             mergeTrees();
         } finally {

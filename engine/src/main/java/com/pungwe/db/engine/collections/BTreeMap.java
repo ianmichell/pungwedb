@@ -1,11 +1,8 @@
 package com.pungwe.db.engine.collections;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.LoadingCache;
-import com.pungwe.db.engine.io.exceptions.DuplicateKeyException;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.engine.io.exceptions.DuplicateKeyException;
 import com.pungwe.db.engine.io.store.Store;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,15 +16,14 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /* FIXME: This needs to be rethought.
  * It's slow when the key size is bigger than 10 and we lose size. when it's persistend to disk */
+
 /**
- *
  * Created by ian on 25/05/2016.
  */
 public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     private static final Logger log = LoggerFactory.getLogger(BTreeMap.class);
 
-//    private final Cache<Long, BTreeNode<K,V>> nodeCache;
     private final Store store;
     private final Serializer keySerializer;
     private final Serializer valueSerializer;
@@ -54,13 +50,13 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         this.rootPointer = rootPointer;
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;
-        // Build a 1000 leaf cache...
-//        this.nodeCache = CacheBuilder.newBuilder().maximumSize(1000).build();
 
         if (rootPointer == -1) {
             LeafNode<K, V> root = new LeafNode<K, V>(keyComparator);
             this.rootPointer = store.add(root, nodeSerializer);
-//            this.nodeCache.put(this.rootPointer, root);
+        } else {
+            BTreeNode<K,V> node = getNode(rootPointer);
+            size.set(node.getMapSize());
         }
     }
 
@@ -98,13 +94,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     private BTreeNode<K, V> getNode(long position) throws IOException {
-//        BTreeNode<K, V> node = nodeCache.getIfPresent(position);
-//        if (node == null) {
-//            node = (BTreeNode<K,V>)store.get(position, nodeSerializer);
-//            nodeCache.put(position, node);
-//        }
-//        return node;
-        return (BTreeNode<K,V>)store.get(position, nodeSerializer);
+        return (BTreeNode<K, V>) store.get(position, nodeSerializer);
     }
 
     @Override
@@ -176,14 +166,12 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             BTreeNode<K, V> node = nodes[i];
             BTreeNode<K, V> parent = i - 1 < 0 ? null : nodes[i - 1];
             long newPointer = store.update(current, node, nodeSerializer);
-//            nodeCache.invalidate(current);
-//            nodeCache.put(newPointer, node);
             if (current == rootPointer && newPointer != current) {
                 rootPointer = newPointer;
             }
             if (parent != null && newPointer != current) {
                 // FIXME: Update all find methods to use Arrays.binarySearch
-                long[] children = ((BranchNode<K>)parent).children;
+                long[] children = ((BranchNode<K>) parent).children;
                 int index = Arrays.binarySearch(children, current);
                 if (index > 0 && index < children.length) {
                     children[index] = newPointer;
@@ -201,22 +189,18 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         BTreeNode<K, ?> right = node.copyRightSplit(mid);
         long[] children = new long[2];
         children[0] = store.update(offset, left, nodeSerializer); // left replaces the old left...
-//        nodeCache.invalidate(offset);
-//        nodeCache.put(children[0], (BTreeNode<K, V>)left);
         children[1] = store.add(right, nodeSerializer);
-//        nodeCache.put(children[0], (BTreeNode<K, V>)right);
 
         // If we are already the root node, we create a new one...
         if (pointers.length == 1) {
             BranchNode<K> newRoot = new BranchNode<K>((Comparator<K>) comparator());
             newRoot.putChild(key, children);
             rootPointer = store.add(newRoot, nodeSerializer);
-//            nodeCache.put(rootPointer, (BTreeNode<K,V>)newRoot);
             return;
         }
 
         // Otherwise we find the parent.
-        BranchNode<K> parent = (BranchNode<K>)parents[pointers.length - 2];
+        BranchNode<K> parent = (BranchNode<K>) parents[pointers.length - 2];
         parent.putChild(key, children);
 
         if (parent.keys.length > maxNodeSize) {
@@ -342,18 +326,18 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 int pos = ((BranchNode<K>) node).findChildPosition((K) key);
                 stackPos.push(new AtomicInteger(pos + 1));
                 current = ((BranchNode<K>) node).children[pos];
-                node = (BTreeNode<K, V>) map.getNode(current);
+                node = map.getNode(current);
             }
             leaf = (LeafNode<K, ?>) node;
         }
 
         private void pointToStart() throws IOException {
-            BTreeNode<K, ?> node = (BTreeNode<K, V>) map.getNode(map.rootPointer);
+            BTreeNode<K, ?> node = map.getNode(map.rootPointer);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
                 stackPos.push(new AtomicInteger(1));
                 long child = ((BranchNode<K>) node).children[0];
-                node = (BTreeNode<K, V>) map.getNode(child);
+                node = map.getNode(child);
             }
             leaf = (LeafNode<K, ?>) node;
         }
@@ -376,7 +360,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             int pos = stackPos.peek().getAndIncrement(); // get the immediate parent position.
             if (pos < parent.children.length) {
                 long t = parent.children[pos];
-                BTreeNode<K, ?> child = (BTreeNode<K, V>) map.getNode(t);
+                BTreeNode<K, ?> child = map.getNode(t);
                 if (child instanceof LeafNode) {
                     leaf = (LeafNode<K, V>) child;
                     leafPos = 0;
@@ -491,8 +475,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                     pointToStart();
                 } else {
                     // Find the starting point
-                    findLeaf((K)lo);
-                    int pos = leaf.findPosition((K)lo);
+                    findLeaf((K) lo);
+                    int pos = leaf.findPosition((K) lo);
                     K k = leaf.getKey(pos);
                     int comp = comparator.compare((K) lo, k);
                     if (comp < 0) {
@@ -526,32 +510,27 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
         private void findLeaf(K key) throws IOException {
             long current = map.rootPointer;
-            BTreeNode<K, ?> node = (BTreeNode<K, ?>)map.getNode(current);
+            BTreeNode<K, ?> node = map.getNode(current);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
                 int pos = ((BranchNode<K>) node).findChildPosition((K) key);
                 stackPos.push(new AtomicInteger(pos - 1));
                 current = ((BranchNode<K>) node).children[pos];
-                node = (BTreeNode<K, ?>)map.getNode(current);
+                node = map.getNode(current);
             }
             leaf = (LeafNode<K, ?>) node;
         }
 
         private void pointToStart() throws IOException {
-            try {
-                //map.lock.readLock().lock();
-                BTreeNode<K, ?> node = (BTreeNode<K, ?>)map.getNode(map.rootPointer);
-                while (!(node instanceof LeafNode)) {
-                    stack.push((BranchNode<K>) node);
-                    stackPos.push(new AtomicInteger(((BranchNode<K>) node).children.length - 2));
-                    long child = ((BranchNode<K>) node).children[((BranchNode<K>) node).children.length - 1];
-                    node = (BTreeNode<K, ?>)map.getNode(child);
-                }
-                leaf = (LeafNode<K, ?>) node;
-                leafPos = leaf.keys.length - 1;
-            } finally {
-                //map.lock.readLock().unlock();
+            BTreeNode<K, ?> node = map.getNode(map.rootPointer);
+            while (!(node instanceof LeafNode)) {
+                stack.push((BranchNode<K>) node);
+                stackPos.push(new AtomicInteger(((BranchNode<K>) node).children.length - 2));
+                long child = ((BranchNode<K>) node).children[((BranchNode<K>) node).children.length - 1];
+                node = map.getNode(child);
             }
+            leaf = (LeafNode<K, ?>) node;
+            leafPos = leaf.keys.length - 1;
         }
 
         private void advance() throws IOException {
@@ -574,7 +553,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 int pos = stackPos.peek().getAndDecrement(); // get the immediate parent position.
                 if (pos >= 0) {
                     long t = parent.children[pos];
-                    BTreeNode<K, ?> child = (BTreeNode<K, ?>)map.getNode(t);
+                    BTreeNode<K, ?> child = map.getNode(t);
                     if (child instanceof LeafNode) {
                         leaf = (LeafNode<K, V>) child;
                         leafPos = leaf.keys.length - 1;
@@ -637,7 +616,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 Object key = leaf.keys[pos];
                 Object value = leaf.values[pos];
 
-                return new BaseMapEntry<K, V>((K)key, (V)value, map);
+                return new BaseMapEntry<K, V>((K) key, (V) value, map);
 
             } finally {
                 //map.lock.readLock().unlock();
@@ -652,11 +631,21 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             this.comparator = comparator;
         }
 
+        protected final AtomicLong size = new AtomicLong();
+
         protected Object[] keys = new Object[0];
 
         public abstract BTreeNode<K, V> copyRightSplit(int mid);
 
         public abstract BTreeNode<K, V> copyLeftSplit(int mid);
+
+        public long getMapSize() {
+            return size.longValue();
+        }
+
+        public void setMapSize(long size) {
+            this.size.set(size);
+        }
 
         protected void addKey(int pos, K key) {
             Object[] newKeys = Arrays.copyOf(keys, keys.length + 1);
