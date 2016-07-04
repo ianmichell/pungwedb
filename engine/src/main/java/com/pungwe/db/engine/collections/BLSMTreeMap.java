@@ -27,15 +27,10 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      */
     private BTreeMap<K, V>[] tables = new BTreeMap[0];
 
-    /*
-     * Background thread executor for merges
-     */
-    private final ScheduledExecutorService mergeExecutor = Executors.newSingleThreadScheduledExecutor();
-
     /**
      * Background thread that executes flushes to disk. This is multithreaded by the number of available CPU
      */
-    private final ExecutorService flushExecutor = Executors.newWorkStealingPool();
+    final ExecutorService flushExecutor = Executors.newSingleThreadExecutor();
 
     private final long maxIndexSize; // 1000 entries by default
 
@@ -112,7 +107,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
         loadTreeTables();
 
         // scheduled executor for merge...
-        mergeExecutor.scheduleAtFixedRate(() -> mergeTrees(), 30, 30, TimeUnit.SECONDS);
+//        mergeExecutor.scheduleAtFixedRate(() -> mergeTrees(), 30, 30, TimeUnit.SECONDS);
     }
 
     private void loadTreeTables() throws IOException {
@@ -214,44 +209,55 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @throws IOException
      */
     private void flush() throws IOException {
-        // copy the reference to the memoryTree
-        lock.readLock().lock();
-        try {
-            // create a new table for the btrees
-            BTreeMap<K, V>[] newTable = tables == null ? new BTreeMap[1] : Arrays.copyOf(tables, tables.length + 1);
-            // Add new index to end of tables
-            final int index = newTable.length - 1;
-            // Place memory tree on to table until we are done with it...
-            newTable[newTable.length - 1] = memoryTree;
-            tables = newTable;
+        System.out.println("Flushing!");
+        // create a new table for the btrees
+        BTreeMap<K, V>[] newTable = tables == null ? new BTreeMap[1] : Arrays.copyOf(tables, tables.length + 1);
+        // Add new index to end of tables
+        final int index = newTable.length - 1;
+        // Place memory tree on to table until we are done with it...
+        newTable[newTable.length - 1] = createStoredTree();
+        memoryTree.forEach(newTable[newTable.length - 1]::put);
+        // Set tables to new tables
+        tables = newTable;
 
-            flushExecutor.submit(() -> {
-                lock.writeLock().lock();
-                System.out.println("Flushing");
-                try {
-                    BTreeMap<K, V> storedTree = createStoredTree();
-                    storedTree.putAll(tables[index]);
-                    tables[index] = storedTree;
-                    memoryTrees.getAndDecrement();
-                    return Void.TYPE.newInstance();
-                } finally {
-                    lock.writeLock().unlock();
-                }
-            });
-            // Hold the current thread and lock until we're finished
-            while (memoryTrees.get() >= 4) {
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException ex) {
-                    // do nothing
-                }
+        // Create a new memory tree
+        memoryTree = createNewMemoryTree();
+
+        System.out.println("Finished");
+
+        /*
+        // Incremeent the number of memory trees
+        memoryTrees.getAndIncrement();
+
+        flushExecutor.submit(() -> {
+            System.out.println("Flushing");
+            BTreeMap<K, V> storedTree = createStoredTree();
+            // Put everything into the stored tree
+            storedTree.putAll(tables[index]);
+            // Once we have populated the stored tree, then
+            // we need to lock everything from writes and set
+            // the table at index to the new stored one...
+            lock.writeLock().lock();
+            try {
+                tables[index] = storedTree;
+                memoryTrees.getAndDecrement();
+                return Void.TYPE.newInstance();
+            } finally {
+                lock.writeLock().unlock();
             }
-        } finally {
-            lock.readLock().unlock();
-        }
+        });
+
+        // Hold the current thread and lock until we're finished flushing at least one of these trees
+        while (memoryTrees.get() >= 4) {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException ex) {
+                // do nothing
+            }
+        }*/
     }
 
-    private void mergeTrees() {
+    public void merge() {
 
         // Otherwise, merge the trees asynchronously into a new tree
         final AtomicLong pointer = new AtomicLong(-1);

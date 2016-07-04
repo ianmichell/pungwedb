@@ -63,7 +63,7 @@ public final class SegmentedFileVolume extends AbstractGrowableVolume {
                 segment = new MemoryMappedVolume(file, new File(directory, file), readOnly, Constants.MIN_PAGE_SHIFT,
                         sliceSize);
             } else {
-                segment = new RandomAccessVolume(file, new File(directory, file), readOnly, sliceSize);
+                segment = new RandomAccessFileVolume(file, new File(directory, file), readOnly, sliceSize);
             }
             if (volumes.length < segmentNumber) {
                 volumes = Arrays.copyOf(volumes, segmentNumber);
@@ -83,7 +83,7 @@ public final class SegmentedFileVolume extends AbstractGrowableVolume {
             segment = new MemoryMappedVolume(segmentName, new File(segmentName), readOnly, Constants.MIN_PAGE_SHIFT,
                     sliceSize);
         } else {
-            segment = new RandomAccessVolume(segmentName, new File(segmentName), readOnly, sliceSize);
+            segment = new RandomAccessFileVolume(segmentName, new File(segmentName), readOnly, sliceSize);
         }
         volumes = Arrays.copyOf(volumes, volumes.length + 1);
         volumes[s] = segment;

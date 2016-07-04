@@ -274,9 +274,7 @@ public abstract class BaseMap<K, V> implements ConcurrentNavigableMap<K, V> {
         if (m == null) {
             return; // do nothing
         }
-        m.forEach((k, v) -> {
-            put(k, v);
-        });
+        m.forEach(this::put);
     }
 
     @Override

@@ -1,19 +1,17 @@
 package com.pungwe.db.engine.collections;
 
 import com.pungwe.db.engine.io.store.AppendOnlyStore;
+import com.pungwe.db.engine.io.store.BufferedRecordLogStore;
 import com.pungwe.db.engine.io.store.CachingStore;
 import com.pungwe.db.engine.io.store.Store;
-import com.pungwe.db.engine.io.volume.MemoryMappedVolume;
-import com.pungwe.db.engine.io.volume.RandomAccessVolume;
+import com.pungwe.db.engine.io.volume.RandomAccessFileVolume;
 import com.pungwe.db.engine.io.volume.Volume;
-import com.pungwe.db.engine.utils.Constants;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.annotation.Documented;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -34,9 +32,8 @@ public class BLSMTreeMapTest {
     @Before
     public void beforeTest() throws IOException {
         tmpFile = File.createTempFile("lsm_", ".db");
-        Volume volume = new RandomAccessVolume("file", tmpFile, false);
-//        store = new CachingStore(new AppendOnlyStore(volume), 10000);
-        store = new AppendOnlyStore(new MemoryMappedVolume("file", tmpFile, false, 30));
+        Volume volume = new RandomAccessFileVolume("file", tmpFile, false);
+        store = new CachingStore(new BufferedRecordLogStore(volume, 1 << 30, -1), 10000);
     }
 
     @After
@@ -75,12 +72,13 @@ public class BLSMTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000000d));
 
             System.out.println("Tree Size: " + store.size());
-            for (int i = 0; i < 1000000; i++) {
+            for (int i = 0; i < 3000000; i++) {
                 try {
                     long get = map.get((long) i);
                     assertEquals((long) i, get);
                 } catch (Throwable ex) {
                     System.out.println("Failed at record: " + i);
+                    ex.printStackTrace();
                     throw ex;
                 }
             }

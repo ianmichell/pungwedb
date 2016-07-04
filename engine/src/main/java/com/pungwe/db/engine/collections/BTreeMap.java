@@ -28,7 +28,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     private final Store store;
     private final Serializer keySerializer;
     private final Serializer valueSerializer;
-    private final BTreeNodeSerializer nodeSerializer = new BTreeNodeSerializer();
+    private final BTreeNodeSerializer nodeSerializer;
     private final long maxNodeSize;
     private volatile long rootPointer;
     protected AtomicLong size;
@@ -51,9 +51,12 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         this.rootPointer = rootPointer;
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;
-
+        nodeSerializer = new BTreeNodeSerializer(keySerializer, valueSerializer);
+        if (!SerializerRegistry.getIntance().hasSerializer(nodeSerializer.getKey())) {
+            SerializerRegistry.getIntance().register(nodeSerializer);
+        }
         if (rootPointer == -1) {
-            LeafNode<K, V> root = new LeafNode<K, V>(keyComparator);
+            LeafNode<K, V> root = new LeafNode<K, V>();
             this.rootPointer = store.add(root, nodeSerializer);
         } else {
             BTreeNode<K,V> node = getNode(rootPointer);
@@ -65,13 +68,14 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         return rootPointer;
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public Entry<K, V> getEntry(K key) {
         lock.readLock().lock();
         try {
             LeafNode<K, Object> leaf = (LeafNode<K, Object>) findLeaf(key);
-            if (leaf != null && leaf.hasKey(key)) {
-                Object value = leaf.getValue(key);
+            if (leaf != null && leaf.hasKey(key, (Comparator<K>)comparator())) {
+                Object value = leaf.getValue(key, (Comparator<K>)comparator());
                 return new BaseMapEntry<>(key, (V) value, this);
             } else {
                 return null;
@@ -88,7 +92,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         long current = rootPointer;
         BTreeNode<K, V> node = getNode(current);
         while (!(node instanceof LeafNode)) {
-            current = ((BranchNode<K>) node).getChild((K) key);
+            current = ((BranchNode<K>) node).getChild((K) key, (Comparator<K>)comparator());
             node = getNode(current);
         }
         return (LeafNode<K, V>) node;
@@ -117,7 +121,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             pointers[pos] = current;
             pos++;
             while (!(node instanceof LeafNode)) {
-                current = ((BranchNode<K>) node).getChild(key);
+                current = ((BranchNode<K>) node).getChild(key, (Comparator<K>)comparator());
                 node = getNode(current);
 
                 // Make sure we have space
@@ -136,8 +140,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             LeafNode<K, Object> leaf = (LeafNode<K, Object>) node;
 
             // We need to check if the value exists
-            boolean exists = leaf.hasKey(key);
-            leaf.putValue(key, value, replace);
+            boolean exists = leaf.hasKey(key, (Comparator<K>)comparator());
+            leaf.putValue(key, value, replace, (Comparator<K>)comparator());
             // Node is not safe and must be split
             if (leaf != null && maxNodeSize > -1 && leaf.keys.length > maxNodeSize) {
                 split(Arrays.copyOf(parentNodes, parentNodes.length), pointers);
@@ -194,15 +198,15 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
         // If we are already the root node, we create a new one...
         if (pointers.length == 1) {
-            BranchNode<K> newRoot = new BranchNode<K>((Comparator<K>) comparator());
-            newRoot.putChild(key, children);
+            BranchNode<K> newRoot = new BranchNode<K>();
+            newRoot.putChild(key, children, (Comparator<K>)comparator());
             rootPointer = store.add(newRoot, nodeSerializer);
             return;
         }
 
         // Otherwise we find the parent.
         BranchNode<K> parent = (BranchNode<K>) parents[pointers.length - 2];
-        parent.putChild(key, children);
+        parent.putChild(key, children, (Comparator<K>)comparator());
 
         if (parent.keys.length > maxNodeSize) {
             split(Arrays.copyOf(parents, parents.length - 1), Arrays.copyOf(pointers, pointers.length - 1));
@@ -288,8 +292,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                     pointToStart();
                 } else {
                     // Find the starting point
-                    findLeaf((K) low);
-                    int pos = leaf.findPosition((K) low);
+                    findLeaf((K) low, comparator);
+                    int pos = leaf.findPosition((K) low, comparator);
                     K k = leaf.getKey(pos);
                     int comp = comparator.compare((K) low, k);
                     if (comp > 0) {
@@ -319,12 +323,12 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             }
         }
 
-        private void findLeaf(K key) throws IOException {
+        private void findLeaf(K key, Comparator<K> comparator) throws IOException {
             long current = map.rootPointer;
             BTreeNode<K, ?> node = map.getNode(current);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
-                int pos = ((BranchNode<K>) node).findChildPosition((K) key);
+                int pos = ((BranchNode<K>) node).findChildPosition((K) key, comparator);
                 stackPos.push(new AtomicInteger(pos + 1));
                 current = ((BranchNode<K>) node).children[pos];
                 node = map.getNode(current);
@@ -477,7 +481,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 } else {
                     // Find the starting point
                     findLeaf((K) lo);
-                    int pos = leaf.findPosition((K) lo);
+                    int pos = leaf.findPosition((K) lo, comparator);
                     K k = leaf.getKey(pos);
                     int comp = comparator.compare((K) lo, k);
                     if (comp < 0) {
@@ -514,7 +518,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             BTreeNode<K, ?> node = map.getNode(current);
             while (!(node instanceof LeafNode)) {
                 stack.push((BranchNode<K>) node);
-                int pos = ((BranchNode<K>) node).findChildPosition((K) key);
+                int pos = ((BranchNode<K>) node).findChildPosition((K) key, comparator);
                 stackPos.push(new AtomicInteger(pos - 1));
                 current = ((BranchNode<K>) node).children[pos];
                 node = map.getNode(current);
@@ -626,11 +630,6 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     static abstract class BTreeNode<K, V> {
-        final Comparator<K> comparator;
-
-        public BTreeNode(Comparator<K> comparator) {
-            this.comparator = comparator;
-        }
 
         protected final AtomicLong size = new AtomicLong();
 
@@ -675,13 +674,13 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             keys = newKeys;
         }
 
-        protected int findPosition(K key) {
+        protected int findPosition(K key, Comparator<K> comparator) {
             int low = 0;
             int high = keys.length - 1;
-            return findPosition(key, low, high);
+            return findPosition(key, low, high, comparator);
         }
 
-        protected int findPosition(K key, int low, int high) {
+        protected int findPosition(K key, int low, int high, Comparator<K> comparator) {
 
             if (keys.length == 0) {
                 return 0;
@@ -726,7 +725,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 high = mid - 1;
             }
 
-            return findPosition(key, low, high);
+            return findPosition(key, low, high, comparator);
         }
     }
 
@@ -734,20 +733,11 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         // FIXME: Make this a counting btree..
         //protected final AtomicLong size = new AtomicLong();
 
-        protected long[] children;
+        protected long[] children = new long[0];
 
-        public BranchNode(Comparator<K> comparator) {
-            this(comparator, new long[0]);
-        }
+        public void putChild(K key, long[] child, Comparator<K> comparator) throws DuplicateKeyException {
 
-        public BranchNode(Comparator<K> comparator, long[] children) {
-            super(comparator);
-            this.children = children;
-        }
-
-        public void putChild(K key, long[] child) throws DuplicateKeyException {
-
-            int pos = findPosition(key);
+            int pos = findPosition(key, comparator);
 
             assert child.length == 2;
             long left = child[0];
@@ -801,8 +791,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             }
         }
 
-        public long getChild(K key) {
-            int pos = findPosition(key);
+        public long getChild(K key, Comparator<K> comparator) {
+            int pos = findPosition(key, comparator);
             if (pos == keys.length) {
                 return children[children.length - 1];
             } else {
@@ -834,7 +824,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         @Override
         public BTreeNode<K, Long> copyRightSplit(int mid) {
             // Create a right hand node
-            BranchNode<K> right = new BranchNode<>(comparator);
+            BranchNode<K> right = new BranchNode<>();
             right.keys = Arrays.copyOfRange(keys, mid + 1, keys.length);
             right.children = Arrays.copyOfRange(children, mid + 1, children.length);
             assert right.keys.length < right.children.length : "Keys and Children are equal";
@@ -844,14 +834,14 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         @Override
         public BTreeNode<K, Long> copyLeftSplit(int mid) {
             // Create a right hand node
-            BranchNode<K> left = new BranchNode<>(comparator);
+            BranchNode<K> left = new BranchNode<>();
             left.keys = Arrays.copyOfRange(keys, 0, mid);
             left.children = Arrays.copyOfRange(children, 0, mid + 1);
             return left;
         }
 
-        public int findChildPosition(K key) {
-            int pos = findPosition(key);
+        public int findChildPosition(K key, Comparator<K> comparator) {
+            int pos = findPosition(key, comparator);
             if (pos == keys.length) {
                 return pos;
             } else {
@@ -867,16 +857,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     final static class LeafNode<K, V> extends BTreeNode<K, V> {
-        protected Object[] values;
-
-        public LeafNode(Comparator<K> comparator) {
-            this(comparator, new Object[0]);
-        }
-
-        public LeafNode(Comparator<K> comparator, Object[] values) {
-            super(comparator);
-            this.values = values;
-        }
+        protected Object[] values = new Object[0];
 
         private void addValue(int pos, V value) {
             Object[] newValues = Arrays.copyOf(values, values.length + 1);
@@ -907,9 +888,9 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             return (K) keys[pos];
         }
 
-        public V putValue(K key, V value, boolean replace) throws DuplicateKeyException {
+        public V putValue(K key, V value, boolean replace, Comparator<K> comparator) throws DuplicateKeyException {
             // Find out where the key should be
-            int pos = findPosition(key);
+            int pos = findPosition(key, comparator);
 
             // New value...
             if (pos == keys.length) {
@@ -941,8 +922,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             return value;
         }
 
-        public V remove(K key) {
-            int pos = findPosition(key);
+        public V remove(K key, Comparator<K> comparator) {
+            int pos = findPosition(key, comparator);
 
             if (pos < keys.length) {
                 K existing = getKey(pos);
@@ -956,8 +937,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             return null;
         }
 
-        public V getValue(K key) {
-            int pos = findPosition(key);
+        public V getValue(K key, Comparator<K> comparator) {
+            int pos = findPosition(key, comparator);
             // Key does not exist
             if (pos == keys.length) {
                 return null;
@@ -975,7 +956,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         @Override
         public BTreeNode<K, V> copyRightSplit(int mid) {
             // Create a right hand node
-            LeafNode<K, V> right = new LeafNode<>(comparator);
+            LeafNode<K, V> right = new LeafNode<>();
             right.keys = Arrays.copyOfRange(keys, mid, keys.length);
             right.values = Arrays.copyOfRange(values, mid, values.length);
             return right;
@@ -984,14 +965,14 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         @Override
         public BTreeNode<K, V> copyLeftSplit(int mid) {
             // Create a right hand node
-            LeafNode<K, V> left = new LeafNode<>(comparator);
+            LeafNode<K, V> left = new LeafNode<>();
             left.keys = Arrays.copyOfRange(keys, 0, mid);
             left.values = Arrays.copyOfRange(values, 0, mid);
             return left;
         }
 
-        public boolean hasKey(K key) {
-            int pos = findPosition(key);
+        public boolean hasKey(K key, Comparator<K> comparator) {
+            int pos = findPosition(key, comparator);
             if (pos == keys.length) {
                 return false;
             }
@@ -1001,7 +982,14 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     // FIXME: Put a serializer Identifier in.
-    private final class BTreeNodeSerializer implements Serializer {
+    private final static class BTreeNodeSerializer implements Serializer {
+
+        final Serializer keySerializer, valueSerializer;
+
+        public BTreeNodeSerializer(Serializer keySerializer, Serializer valueSerializer) {
+            this.keySerializer = keySerializer;
+            this.valueSerializer = valueSerializer;
+        }
 
         @Override
         public void serialize(DataOutput out, Object value) throws IOException {
@@ -1010,6 +998,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
             DataOutputStream dataOut = new DataOutputStream(bytesOut);
 
             BTreeNode node = (BTreeNode) value;
+            dataOut.writeUTF(getKey());
             dataOut.writeBoolean(value instanceof LeafNode);
             dataOut.writeInt(node.keys.length);
             for (Object k : node.keys) {
@@ -1033,25 +1022,25 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
         @Override
         public Object deserialize(DataInput in) throws IOException {
+            String type = in.readUTF();
             boolean leaf = in.readBoolean();
             int keyLength = in.readInt();
-            BTreeNode<K, ?> node = leaf ? new LeafNode<K, V>((Comparator<K>) comparator()) :
-                    new BranchNode<K>((Comparator<K>) comparator());
+            BTreeNode<?, ?> node = leaf ? new LeafNode<>() : new BranchNode<>();
             node.keys = new Object[keyLength];
             for (int i = 0; i < keyLength; i++) {
                 node.keys[i] = keySerializer.deserialize(in);
             }
             if (leaf) {
-                ((LeafNode<K, V>) node).values = new Object[keyLength];
+                ((LeafNode<?, ?>) node).values = new Object[keyLength];
                 for (int i = 0; i < keyLength; i++) {
-                    ((LeafNode<K, V>) node).values[i] = valueSerializer.deserialize(in);
+                    ((LeafNode<?, ?>) node).values[i] = valueSerializer.deserialize(in);
                 }
             } else {
-                ((BranchNode<K>) node).children = new long[keyLength + 1];
-                for (int i = 0; i < ((BranchNode<K>) node).children.length; i++) {
+                ((BranchNode<?>) node).children = new long[keyLength + 1];
+                for (int i = 0; i < ((BranchNode<?>) node).children.length; i++) {
                     long offset = in.readLong();
                     assert offset > 0 : "Id is 0...";
-                    ((BranchNode<K>) node).children[i] = offset;
+                    ((BranchNode<?>) node).children[i] = offset;
                 }
             }
             return node;
@@ -1060,7 +1049,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
         @Override
         public String getKey() {
             // This is to ensure uniqueness across maps
-            return "BTM";
+            return "BTM:" + keySerializer.getKey() + ":" + valueSerializer.getKey();
         }
     }
 }

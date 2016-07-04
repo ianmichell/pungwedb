@@ -9,14 +9,14 @@ import static org.junit.Assert.assertEquals;
 /**
  * Created by 917903 on 23/05/2016.
  */
-public class RandomAccessVolumeTest {
+public class RandomAccessFileVolumeTest {
 
     @Test
     public void testReadWriteByte() throws Exception {
 
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             output.writeByte(100);
             DataInput input = volume.getDataInput(0);
@@ -33,7 +33,7 @@ public class RandomAccessVolumeTest {
 
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             output.writeByte(-100);
             DataInput input = volume.getDataInput(0);
@@ -50,7 +50,7 @@ public class RandomAccessVolumeTest {
 
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             output.writeShort(100);
             DataInput input = volume.getDataInput(0);
@@ -67,7 +67,7 @@ public class RandomAccessVolumeTest {
 
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             output.writeShort(-100);
             DataInput input = volume.getDataInput(0);
@@ -83,7 +83,7 @@ public class RandomAccessVolumeTest {
     public void testReadWriteChar() throws IOException {
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             output.writeChar('z');
             DataInput input = volume.getDataInput(0);
@@ -100,7 +100,7 @@ public class RandomAccessVolumeTest {
 
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             output.writeUTF("This is a UTF8 String test");
             DataInput input = volume.getDataInput(0);
@@ -116,7 +116,7 @@ public class RandomAccessVolumeTest {
     public void testMultipleIntegerWrite() throws Exception {
         File tmp = File.createTempFile("test", ".db");
         try {
-            RandomAccessVolume volume = new RandomAccessVolume("test", tmp);
+            RandomAccessFileVolume volume = new RandomAccessFileVolume("test", tmp);
             DataOutput output = volume.getDataOutput(0);
             for (int i = 0; i < 10000; i++) {
                 output.writeInt(i);

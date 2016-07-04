@@ -1,37 +1,35 @@
 package com.pungwe.db.engine.io.volume;
 
-import com.pungwe.db.core.utils.ConfigSingleton;
 import com.pungwe.db.engine.utils.Constants;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Created by 917903 on 23/05/2016.
  */
-public final class RandomAccessVolume implements Volume {
+public final class RandomAccessFileVolume implements Volume {
 
     private final String name;
     private RandomAccessFile randomAccessFile;
     private final boolean readOnly;
     private final long positionLimit;
 
-    public RandomAccessVolume(File file) throws IOException {
+    public RandomAccessFileVolume(File file) throws IOException {
         this(file.getPath(), file);
     }
 
-    public RandomAccessVolume(String name, File file) throws IOException {
+    public RandomAccessFileVolume(String name, File file) throws IOException {
         this(name, file, false);
     }
 
-    public RandomAccessVolume(String name, File file, boolean readOnly) throws IOException {
+    public RandomAccessFileVolume(String name, File file, boolean readOnly) throws IOException {
         this(name, file, readOnly, -1l);
     }
 
-    public RandomAccessVolume(String name, File file, boolean readOnly, long positionLimit) throws IOException {
+    public RandomAccessFileVolume(String name, File file, boolean readOnly, long positionLimit) throws IOException {
         this.name = name;
         randomAccessFile = new RandomAccessFile(file, readOnly ? "r" : "rw");
         this.readOnly = readOnly;

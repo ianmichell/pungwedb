@@ -26,7 +26,7 @@ public class DirectStore implements Store {
 
     protected final Volume volume;
     protected final long maxEntries;
-    protected final Header header;
+    protected Header header;
     protected final ReentrantReadWriteLock readWriteLock;
 
     public DirectStore(Volume volume) throws IOException {
@@ -77,6 +77,10 @@ public class DirectStore implements Store {
     }
 
     protected void writeHeader() throws IOException {
+        writeHeader(0);
+    }
+
+    protected void writeHeader(long position) throws IOException {
         readWriteLock.writeLock().lock();
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -90,8 +94,8 @@ public class DirectStore implements Store {
 
             byte[] headerBytes = bytes.toByteArray();
 
-            this.volume.ensureAvailable(0);
-            DataOutput output = this.volume.getDataOutput(0);
+            this.volume.ensureAvailable(position);
+            DataOutput output = this.volume.getDataOutput(position);
             output.write(headerBytes);
         } finally {
             readWriteLock.writeLock().unlock();

@@ -35,12 +35,12 @@ public class BTreeMapTest {
     @Test
     public void testPut() throws IOException {
 
-        BTreeMap2<String, String> map = new BTreeMap2<String, String>(store, (o1, o2) -> {
+        BTreeMap<String, String> map = new BTreeMap<String, String>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareToIgnoreCase(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("key", "value");
 
@@ -51,12 +51,12 @@ public class BTreeMapTest {
     @Test
     public void testSplit() throws IOException {
 
-        BTreeMap2<String, String> map = new BTreeMap2<String, String>(store, (o1, o2) -> {
+        BTreeMap<String, String> map = new BTreeMap<String, String>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareToIgnoreCase(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("1", "1");
         map.put("2", "2");
@@ -76,12 +76,12 @@ public class BTreeMapTest {
 
     @Test
     public void testMany() throws Exception {
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         long start = System.nanoTime();
         for (int i = 0; i < 100; i++) {
@@ -107,12 +107,12 @@ public class BTreeMapTest {
     @Test
     public void testMultiThread() throws Exception {
 
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         ExecutorService executor = Executors.newFixedThreadPool(8);
 
@@ -146,12 +146,12 @@ public class BTreeMapTest {
     @Test
     public void testMultiInsertRandom() throws Exception {
 
-        final BTreeMap2<String, String> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 200, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 200, -1);
 
         List<String> guids = new LinkedList<>();
         // Timeout after 1 minute...
@@ -184,12 +184,12 @@ public class BTreeMapTest {
     }
 
     private void multiThreadInsert(Store store) throws Exception {
-        final BTreeMap2<UUID, UUID> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<UUID, UUID> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         ExecutorService executor = Executors.newFixedThreadPool(8);
 
@@ -232,12 +232,12 @@ public class BTreeMapTest {
 
     @Test
     public void testIterateEntries() throws IOException {
-        final BTreeMap2<String, String> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("1", "1");
         map.put("2", "2");
@@ -254,12 +254,12 @@ public class BTreeMapTest {
 
     @Test
     public void testIterateBackwards() throws IOException {
-        final BTreeMap2<String, String> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("1", "1");
         map.put("2", "2");
@@ -276,12 +276,12 @@ public class BTreeMapTest {
 
     @Test
     public void testReverseMap() throws IOException {
-        final BTreeMap2<String, String> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("1", "1");
         map.put("2", "2");
@@ -295,12 +295,12 @@ public class BTreeMapTest {
 
     @Test
     public void testIteratingReverseMap() throws IOException {
-        final BTreeMap2<String, String> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("1", "1");
         map.put("2", "2");
@@ -319,12 +319,12 @@ public class BTreeMapTest {
 
     @Test
     public void testReverseIteratingReverseMap() throws IOException {
-        final BTreeMap2<String, String> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<String, String> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         map.put("1", "1");
         map.put("2", "2");
@@ -344,12 +344,12 @@ public class BTreeMapTest {
     @Test
     public void testSubMap() throws IOException {
 
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         for (long i = 1; i < 101; i++) {
             map.put(i, i);
@@ -365,12 +365,12 @@ public class BTreeMapTest {
     @Test
     public void testHeadMapInclusive() throws IOException {
 
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         for (long i = 1; i < 101; i++) {
             map.put(i, i);
@@ -385,12 +385,12 @@ public class BTreeMapTest {
     @Test
     public void testHeadMap() throws IOException {
 
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         for (long i = 1; i < 101; i++) {
             map.put(i, i);
@@ -405,12 +405,12 @@ public class BTreeMapTest {
     @Test
     public void testTailMap() throws IOException {
 
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         for (long i = 1; i < 101; i++) {
             map.put(i, i);
@@ -426,12 +426,12 @@ public class BTreeMapTest {
     @Test
     public void testTailMapInclusive() throws IOException {
 
-        final BTreeMap2<Long, Long> map = new BTreeMap2<>(store, (o1, o2) -> {
+        final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Keys cannot be null");
             }
             return o1.compareTo(o2);
-        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1, -1);
+        }, new ObjectSerializer(), new ObjectSerializer(), 5, -1);
 
         for (long i = 1; i < 101; i++) {
             map.put(i, i);
