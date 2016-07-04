@@ -215,7 +215,7 @@ public class ObjectSerializer implements Serializer {
             }
             case ARRAY: {
                 int size = in.readInt(); // get number of entries
-                LinkedList<Object>  array = new LinkedList<>();
+                List<Object>  array = new ArrayList<>();
                 for (int i = 0; i < size; i++) {
                     byte entryType = in.readByte();
                     if (entryType != ENTRY) {

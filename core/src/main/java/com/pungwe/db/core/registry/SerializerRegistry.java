@@ -65,4 +65,8 @@ public class SerializerRegistry {
     public Serializer getByKey(String serializer) {
         return serializers.get(serializer);
     }
+
+    public boolean hasSerializer(String key) {
+        return serializers.containsKey(key);
+    }
 }

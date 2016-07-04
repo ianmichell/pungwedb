@@ -2,8 +2,10 @@ package com.pungwe.db.engine.io.store;
 
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.core.registry.SerializerRegistry;
 import com.pungwe.db.engine.io.volume.Volume;
 import com.pungwe.db.engine.utils.Constants;
+import com.sun.tools.internal.jxc.ap.Const;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -87,7 +89,7 @@ public class AppendOnlyStore implements Store {
 
             // FIXME: We need a memory segment that this is written to, then pushed to disk on commit
             ByteBuffer buffer = ByteBuffer.allocate(21 + data.length);
-            buffer.put((byte)'R');
+            buffer.put((byte) 'R');
             buffer.putInt(data.length);
             buffer.putLong(previous);
             buffer.putLong(next);
@@ -141,6 +143,11 @@ public class AppendOnlyStore implements Store {
             out.close();
             byteStream.close();
         }
+    }
+
+    @Override
+    public boolean isAppendOnly() {
+        return true;
     }
 
     @Override
@@ -225,11 +232,57 @@ public class AppendOnlyStore implements Store {
 
     protected class RecordIterator implements Iterator<Object> {
 
+        private final Iterator<ByteBuffer> it;
+
+        public RecordIterator() throws IOException {
+            it = new DataIterator();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return it.hasNext();
+        }
+
+        @Override
+        public Object next() {
+            if (!hasNext()) {
+                return null;
+            }
+            try {
+                ByteBuffer buffer = it.next();
+                // Double check to ensure buffer isn't null...
+                if (buffer == null) {
+                    return null;
+                }
+
+                ByteArrayInputStream bytesIn = new ByteArrayInputStream(buffer.array());
+                DataInputStream dataIn = new DataInputStream(bytesIn);
+                String serializerKey = dataIn.readUTF();
+                Serializer serializer = SerializerRegistry.getIntance().getByKey(serializerKey);
+                if (serializer == null) {
+                    throw new IllegalArgumentException("Could not find appropriate serializer");
+                }
+                dataIn.reset();
+                return serializer.deserialize(dataIn);
+            } catch (IOException ex) {
+                // FIXME: Add logging...
+                return null;
+            }
+        }
+
+        @Override
+        public void remove() {
+            // FIXME: This can easily be implemented as a store is a giant linked list.
+        }
+    }
+
+    protected class DataIterator implements Iterator<ByteBuffer> {
+
         protected final AtomicLong current = new AtomicLong(-1l);
         protected final AtomicLong currentIndex = new AtomicLong(0);
         protected final Header header;
 
-        public RecordIterator() throws IOException {
+        public DataIterator() throws IOException {
             // Fetch the most recently written header.
             // The iterator is classified as a point in time
             // of the store. We do not want new records to affect
@@ -245,21 +298,31 @@ public class AppendOnlyStore implements Store {
         }
 
         @Override
-        public Object next() {
+        public ByteBuffer next() {
+            readWriteLock.readLock().lock();
             if (currentIndex.longValue() >= header.getSize()) {
                 return null;
             }
             try {
-                // Check that the first thing we look at is not a header...
-                if (getPositionType(current.longValue()) == 'H') {
-                    current.addAndGet(Constants.BLOCK_SIZE);
+                try {
+                    // Check that the first thing we look at is not a header...
+                    if (getPositionType(current.longValue()) == 'H') {
+                        current.addAndGet(Constants.BLOCK_SIZE);
+                    }
+                    DataInput input = volume.getDataInput(current.get());
+                    input.skipBytes(1);
+                    int length = input.readInt();
+                    input.skipBytes(16);
+                    byte[] buffer = new byte[length];
+                    input.readFully(buffer);
+                    ByteBuffer data = ByteBuffer.wrap(buffer);
+                    advance(); // Go to the next record
+                    return data;
+                } catch (IOException ex) {
+                    return null;
                 }
-                // FIXME: Add a serializer registry
-                Object value = get(current.longValue(), new ObjectSerializer());
-                advance(); // Go to the next record
-                return value;
-            } catch (IOException ex) {
-                return null;
+            } finally {
+                readWriteLock.readLock().unlock();
             }
         }
 
@@ -300,6 +363,7 @@ public class AppendOnlyStore implements Store {
             }
             return position + Constants.BLOCK_SIZE;
         }
+
     }
 
     protected static class Header {

@@ -4,6 +4,8 @@ import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.volume.Volume;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Iterator;
 
 /**
  * Created by 917903 on 24/05/2016.
@@ -18,8 +20,7 @@ public interface Store extends Iterable<Object> {
     void clear() throws IOException;
     Volume getVolume();
     long getPosition();
-
-    default void appendVolume(Volume volume) {
-        this.getVolume().getDataOutput(getPosition()).
+    default boolean isAppendOnly() {
+        return false;
     }
 }

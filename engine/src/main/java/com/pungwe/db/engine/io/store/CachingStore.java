@@ -6,6 +6,7 @@ import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.volume.Volume;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -98,5 +99,10 @@ public class CachingStore implements Store {
     @Override
     public Iterator<Object> iterator() {
         return store.iterator();
+    }
+
+    @Override
+    public boolean isAppendOnly() {
+        return store.isAppendOnly();
     }
 }

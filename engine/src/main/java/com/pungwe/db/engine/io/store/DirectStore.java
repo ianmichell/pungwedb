@@ -2,9 +2,11 @@ package com.pungwe.db.engine.io.store;
 
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
+import com.pungwe.db.core.registry.SerializerRegistry;
 import com.pungwe.db.engine.io.volume.Volume;
 import com.pungwe.db.engine.utils.Constants;
 
+import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicLong;
 import java.io.IOException;
 import java.io.DataInput;
@@ -164,10 +166,10 @@ public class DirectStore implements Store {
             output.write(data);
 
             // Calculate remainder of block
-            int remainder = ((pages * Constants.BLOCK_SIZE) - data.length) - 21;
-            if (remainder > 0) {
-                output.write(new byte[remainder]);
-            }
+//            int remainder = ((pages * Constants.BLOCK_SIZE) - data.length) - 21;
+//            if (remainder > 0) {
+//                output.write(new byte[remainder]);
+//            }
 
             // Incremenent record size
             header.incrementSize();
@@ -295,16 +297,63 @@ public class DirectStore implements Store {
         return header.getPosition();
     }
 
+
+    // FIXME: We need to use the registry
     @Override
     public Iterator<Object> iterator() {
-        return new RecordIterator();
+        try {
+            return new RecordIterator();
+        } catch (IOException ex) {
+            // should never happen
+            return null;
+        }
     }
 
     protected class RecordIterator implements Iterator<Object> {
 
+        private final Iterator<ByteBuffer> it;
+
+        public RecordIterator() throws IOException {
+            it = new DataIterator();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return it.hasNext();
+        }
+
+        @Override
+        public Object next() {
+            if (!hasNext()) {
+                return null;
+            }
+            try {
+                ByteBuffer buffer = it.next();
+                // Double check to ensure buffer isn't null...
+                if (buffer == null) {
+                    return null;
+                }
+
+                ByteArrayInputStream bytesIn = new ByteArrayInputStream(buffer.array());
+                DataInputStream dataIn = new DataInputStream(bytesIn);
+                String serializerKey = dataIn.readUTF();
+                Serializer serializer = SerializerRegistry.getIntance().getByKey(serializerKey);
+                if (serializer == null) {
+                    throw new IllegalArgumentException("Could not find appropriate serializer");
+                }
+                dataIn.reset();
+                return serializer.deserialize(dataIn);
+            } catch (IOException ex) {
+                // FIXME: Add logging...
+                return null;
+            }
+        }
+    }
+
+    protected class DataIterator implements Iterator<ByteBuffer> {
         protected final AtomicLong current = new AtomicLong(-1l);
 
-        public RecordIterator() {
+        public DataIterator() {
             current.set(header.getFirstPosition());
         }
 
@@ -314,17 +363,25 @@ public class DirectStore implements Store {
         }
 
         @Override
-        public Object next() {
+        public ByteBuffer next() {
             readWriteLock.readLock().lock();
             try {
-                if (current.longValue() > header.getPosition()) {
+                if (current.longValue() >= header.getPosition()) {
                     return null;
                 }
                 try {
-                    // FIXME: Add a serializer registry
-                    Object value = get(current.longValue(), new ObjectSerializer());
+                    // Check that the first thing we look at is not a header...
+                    if (getPositionType(current.longValue()) == 'H') {
+                        current.addAndGet(Constants.BLOCK_SIZE);
+                    }
+                    DataInput input = volume.getDataInput(current.get());
+                    input.skipBytes(17);
+                    int length = input.readInt();
+                    byte[] buffer = new byte[length];
+                    input.readFully(buffer);
+                    ByteBuffer data = ByteBuffer.wrap(buffer);
                     advance(); // Go to the next record
-                    return value;
+                    return data;
                 } catch (IOException ex) {
                     return null;
                 }

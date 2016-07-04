@@ -2,14 +2,15 @@ package com.pungwe.db.engine.collections;
 
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.core.registry.SerializerRegistry;
 import com.pungwe.db.engine.io.exceptions.DuplicateKeyException;
 import com.pungwe.db.engine.io.store.Store;
+import com.pungwe.db.engine.utils.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -1001,25 +1002,33 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     // FIXME: Put a serializer Identifier in.
     private final class BTreeNodeSerializer implements Serializer {
+
         @Override
         public void serialize(DataOutput out, Object value) throws IOException {
+            // Create a buffer of the maximum node size...
+            ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
+            DataOutputStream dataOut = new DataOutputStream(bytesOut);
+
             BTreeNode node = (BTreeNode) value;
-            out.writeBoolean(value instanceof LeafNode);
-            out.writeInt(node.keys.length);
+            dataOut.writeBoolean(value instanceof LeafNode);
+            dataOut.writeInt(node.keys.length);
             for (Object k : node.keys) {
-                keySerializer.serialize(out, k);
+                keySerializer.serialize(dataOut, k);
             }
             if (value instanceof LeafNode) {
                 for (Object o : ((LeafNode) value).values) {
-                    valueSerializer.serialize(out, o);
+                    valueSerializer.serialize(dataOut, o);
                 }
             } else {
                 for (long o : ((BranchNode) value).children) {
                     assert o > 0 : " pointer is 0";
-                    out.writeLong(o);
+                    dataOut.writeLong(o);
                 }
             }
-            return;
+
+            byte[] buffer = bytesOut.toByteArray();
+            // Once the node is written to the byte array buffer, then we can write it directly to out
+            out.write(buffer);
         }
 
         @Override
@@ -1050,7 +1059,8 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
 
         @Override
         public String getKey() {
-            return "BT";
+            // This is to ensure uniqueness across maps
+            return "BTM";
         }
     }
 }
