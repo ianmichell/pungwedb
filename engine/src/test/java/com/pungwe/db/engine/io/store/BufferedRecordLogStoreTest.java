@@ -2,6 +2,8 @@ package com.pungwe.db.engine.io.store;
 
 import com.pungwe.db.engine.io.volume.ByteBufferVolume;
 import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
+import com.pungwe.db.engine.io.volume.RandomAccessFileVolume;
+import com.pungwe.db.engine.io.volume.Volume;
 import com.pungwe.db.engine.utils.Constants;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import java.io.*;
@@ -13,15 +15,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
-public class AppendOnlyStoreTest {
+public class BufferedRecordLogStoreTest {
 
-    protected ByteBufferVolume volume;
-    protected AppendOnlyStore store;
+    protected Volume volume;
+    protected BufferedRecordLogStore store;
 
     @Before
     public void setup() throws Exception {
-        this.volume = new HeapByteBufferVolume("memory", false, Constants.MIN_PAGE_SHIFT, -1l);
-        this.store = new AppendOnlyStore(volume);
+//        this.volume = new HeapByteBufferVolume("memory", false, 1 << 30, -1l);
+        File file = File.createTempFile("append_store", ".db");
+        file.deleteOnExit();
+        this.volume = new RandomAccessFileVolume(file);
+        this.store = new BufferedRecordLogStore(volume, 16 << 20, -1);
     }
 
     @Test
@@ -44,11 +49,11 @@ public class AppendOnlyStoreTest {
     @Test
     public void testFindHeader() throws Exception {
 
-        long position = this.store.add("Test Record", new ObjectSerializer());
+        this.store.add("Test Record", new ObjectSerializer());
         this.store.commit();
 
         // Create a new copy of the store
-        Store newStore = new AppendOnlyStore(volume);
+        Store newStore = new BufferedRecordLogStore(volume, 16 << 20, -1);
 
         Iterator<Object> it = newStore.iterator();
         assertTrue(it.hasNext());
@@ -64,7 +69,7 @@ public class AppendOnlyStoreTest {
         this.store.commit();
 
         // Create a new copy of the store
-        Store newStore = new AppendOnlyStore(volume);
+        Store newStore = new BufferedRecordLogStore(volume, 16 << 20, -1);
 
         Iterator<Object> it = newStore.iterator();
         assertTrue(it.hasNext());
@@ -73,17 +78,20 @@ public class AppendOnlyStoreTest {
 
     @Test
     public void testIterator() throws Exception {
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 1000000; i++) {
             this.store.add("my string " + (i + 1), new ObjectSerializer());
         }
-
+        System.out.println("Finished add a million records!");
         this.store.commit();
 
+        assertEquals(1000000, store.size());
         int i = 0;
+        System.out.println("Iterating over a million records!");
         for (Object value : this.store) {
             assertEquals(("my string " + ++i), (String)value);
         }
-        assertEquals(100, i);
+        assertEquals(1000000, i);
+        System.out.println("Finished iterating over a million records!");
     }
 
     @Test

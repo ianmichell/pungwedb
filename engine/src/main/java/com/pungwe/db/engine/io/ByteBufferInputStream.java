@@ -23,6 +23,11 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
     }
 
     @Override
+    public synchronized void reset() throws IOException {
+        input.position.set(0);
+    }
+
+    @Override
     public void readFully(byte[] b) throws IOException {
         input.readFully(b);
     }

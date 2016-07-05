@@ -1,6 +1,5 @@
 package com.pungwe.db.engine.collections;
 
-import com.pungwe.db.engine.io.store.AppendOnlyStore;
 import com.pungwe.db.engine.io.store.BufferedRecordLogStore;
 import com.pungwe.db.engine.io.store.CachingStore;
 import com.pungwe.db.engine.io.store.Store;
@@ -14,12 +13,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 /**
  * Created by 917903 on 28/06/2016.
@@ -33,7 +30,7 @@ public class BLSMTreeMapTest {
     public void beforeTest() throws IOException {
         tmpFile = File.createTempFile("lsm_", ".db");
         Volume volume = new RandomAccessFileVolume("file", tmpFile, false);
-        store = new CachingStore(new BufferedRecordLogStore(volume, 1 << 30, -1), 10000);
+        store = new CachingStore(new BufferedRecordLogStore(volume, 256 << 20, -1), 10000);
     }
 
     @After
@@ -58,24 +55,35 @@ public class BLSMTreeMapTest {
     @Test
     public void testManyMultiThreaded() throws Exception {
         ExecutorService executor = Executors.newWorkStealingPool();
-        BLSMTreeMap<Long, Long> map = new BLSMTreeMap<>(store, Long::compareTo, 100000, 1024);
-        List<Callable<Long>> threads = new LinkedList<>();
+        BLSMTreeMap<Long, Long> map = new BLSMTreeMap<>(store, Long::compareTo, 1000, 100);
+        List<Callable<Boolean>> threads = new LinkedList<>();
         try {
-            for (int i = 0; i < 3000000; i++) {
+            for (int i = 0; i < 10000; i++) {
                 final long key = i;
-                threads.add(() -> map.put(key, key));
+                threads.add(() -> map.put(key, key) != null);
             }
             // Timeout after 1 minute...
             long start = System.nanoTime();
-            executor.invokeAll(threads, 1, TimeUnit.MINUTES);
+            List<Future<Boolean>> futures = executor.invokeAll(threads, 5, TimeUnit.MINUTES);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000000d));
 
-            System.out.println("Tree Size: " + store.size());
-            for (int i = 0; i < 3000000; i++) {
+            // Ensure that we have written every single record....
+            for (Future<Boolean> future : futures) {
                 try {
-                    long get = map.get((long) i);
-                    assertEquals((long) i, get);
+                    assert future.get();
+                } catch (CancellationException ex) {
+                    ex.printStackTrace();
+                    throw ex;
+                }
+            }
+
+            System.out.println("Tree Size: " + store.size());
+            for (int i = 0; i < 10000; i++) {
+                try {
+                    Long get = map.get((long) i);
+                    assertNotNull(get);
+                    assertEquals(new Long(i), get);
                 } catch (Throwable ex) {
                     System.out.println("Failed at record: " + i);
                     ex.printStackTrace();

@@ -147,7 +147,7 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
         // BTree doesn't need to be very large as we're in memory and there is no seek time... So 10
         // entries per node is good enough...
         BTreeMap<K,V> tree = new BTreeMap<>(memoryStore, (Comparator<K>) comparator(),
-                keySerializer, valueSerializer, 10);
+                keySerializer, valueSerializer, 50);
         memoryTrees.getAndIncrement();
         return tree;
     }
@@ -209,10 +209,11 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
      * @throws IOException
      */
     private void flush() throws IOException {
-        System.out.println("Flushing!");
         // Place memory tree on to table until we are done with it...
         BTreeMap<K, V> storedTree = createStoredTree();
         memoryTree.forEach(storedTree::put);
+
+        assert storedTree.sizeLong() == memoryTree.sizeLong() : "Tree sizes do not match";
         // Set tables to new tables
         // create a new table for the btrees
         // Add new index to end of tables
@@ -222,8 +223,6 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
 
         // Create a new memory tree
         memoryTree = createNewMemoryTree();
-
-        System.out.println("Finished");
     }
 
     public void merge() {
@@ -307,8 +306,9 @@ public final class BLSMTreeMap<K, V> extends BaseMap<K, V> {
             if (memoryTree.sizeLong() >= maxIndexSize) {
                 try {
                     flush();
-                } catch (IOException ex) {
+                } catch (Throwable ex) {
                     // FIXME: Handle this
+                    throw new RuntimeException(ex);
                 }
             }
 

@@ -1,22 +1,23 @@
 package com.pungwe.db.engine.collections;
 
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
+import com.pungwe.db.core.utils.UUIDGen;
 import com.pungwe.db.engine.io.store.*;
+import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
 import com.pungwe.db.engine.io.volume.RandomAccessFileVolume;
 import com.pungwe.db.engine.io.volume.Volume;
-import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
-import com.pungwe.db.core.utils.UUIDGen;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
-import java.util.*;
-import java.util.concurrent.*;
 import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /**
  * Created by ian on 27/05/2016.
@@ -447,26 +448,32 @@ public class BTreeMapTest {
     public void testHugeWrite() throws Exception {
         File file = File.createTempFile("btree-", ".db");
         try {
-            // 1MB buffer
-            store = new CachingStore(new BufferedRecordLogStore(new RandomAccessFileVolume(file), 1 << 30, -1), 10000);
+            // 256MB buffer
+            store = new CachingStore(new BufferedRecordLogStore(new RandomAccessFileVolume(file), 256 << 20, -1), 10000);
             final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
                 if (o1 == null || o2 == null) {
                     throw new IllegalArgumentException("Keys cannot be null");
                 }
                 return o1.compareTo(o2);
-            }, new ObjectSerializer(), new ObjectSerializer(), 1024, -1);
+            }, new ObjectSerializer(), new ObjectSerializer(), 100, -1);
 
             // Timeout after 1 minute...
             long start = System.nanoTime();
-            for (long i = 1; i < 3000000; i++) {
+            for (long i = 1; i < 10001; i++) {
                 assert map.put(i, i) != null : "failed at " + i;
             }
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to put ", (end - start) / 1000000000d));
 
 
-            for (long key = 0; key < 3000000; key++) {
-                assertEquals(key, (long) map.get(key));
+            for (long key = 1; key < 10001; key++) {
+                try {
+                    assertTrue(map.containsKey(key));
+                    assertEquals(new Long(key), map.get(key));
+                } catch (Throwable ex) {
+                    System.out.println("Failed at: " + key);
+                    throw ex;
+                }
             }
         } finally {
             file.delete();
