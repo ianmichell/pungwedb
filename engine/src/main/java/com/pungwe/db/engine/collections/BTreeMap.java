@@ -178,7 +178,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
                 // FIXME: Update all find methods to use Arrays.binarySearch
                 long[] children = ((BranchNode<K>) parent).children;
                 int index = Arrays.binarySearch(children, current);
-                if (index > 0 && index < children.length) {
+                if (index >= 0 && index < children.length) {
                     children[index] = newPointer;
                 }
             }

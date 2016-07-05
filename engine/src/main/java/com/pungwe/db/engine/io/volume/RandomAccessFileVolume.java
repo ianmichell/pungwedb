@@ -1,5 +1,7 @@
 package com.pungwe.db.engine.io.volume;
 
+import com.pungwe.db.engine.io.AbstractDataInput;
+import com.pungwe.db.engine.io.AbstractDataOutput;
 import com.pungwe.db.engine.utils.Constants;
 
 import java.io.*;
@@ -130,7 +132,7 @@ public final class RandomAccessFileVolume implements Volume {
         }
     }
 
-    private class RandomAccessDataInput extends VolumeDataInput {
+    private class RandomAccessDataInput extends AbstractDataInput {
 
         private final FileChannel fileChannel;
 
@@ -159,7 +161,7 @@ public final class RandomAccessFileVolume implements Volume {
         }
     }
 
-    private class RandomAccessDataOutput extends VolumeDataOutput {
+    private class RandomAccessDataOutput extends AbstractDataOutput {
 
         private final FileChannel fileChannel;
 

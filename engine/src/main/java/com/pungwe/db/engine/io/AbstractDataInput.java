@@ -1,4 +1,4 @@
-package com.pungwe.db.engine.io.volume;
+package com.pungwe.db.engine.io;
 
 import java.io.DataInput;
 import java.io.DataInputStream;
@@ -10,11 +10,11 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Created by 917903 on 23/05/2016.
  */
-public abstract class VolumeDataInput implements DataInput {
+public abstract class AbstractDataInput implements DataInput {
 
     protected final AtomicLong position;
 
-    public VolumeDataInput(long position) {
+    public AbstractDataInput(long position) {
         this.position = new AtomicLong(position);
     }
 

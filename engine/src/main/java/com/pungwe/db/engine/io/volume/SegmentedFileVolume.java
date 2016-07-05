@@ -1,5 +1,7 @@
 package com.pungwe.db.engine.io.volume;
 
+import com.pungwe.db.engine.io.AbstractDataInput;
+import com.pungwe.db.engine.io.AbstractDataOutput;
 import com.pungwe.db.engine.utils.Constants;
 
 import java.io.*;
@@ -154,7 +156,7 @@ public final class SegmentedFileVolume extends AbstractGrowableVolume {
         volumes = new Volume[0];
     }
 
-    private class SegmentedFileDataInput extends VolumeDataInput {
+    private class SegmentedFileDataInput extends AbstractDataInput {
 
         public SegmentedFileDataInput(long position) {
             super(position);
@@ -191,7 +193,7 @@ public final class SegmentedFileVolume extends AbstractGrowableVolume {
         }
     }
 
-    private class SegmentedFileDataOutput extends VolumeDataOutput {
+    private class SegmentedFileDataOutput extends AbstractDataOutput {
 
         public SegmentedFileDataOutput(long position) {
             super(position);

@@ -1,15 +1,15 @@
 package com.pungwe.db.engine.collections;
 
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
-import com.pungwe.db.engine.io.store.AppendOnlyStore;
-import com.pungwe.db.engine.io.store.Store;
-import com.pungwe.db.engine.io.store.DirectStore;
+import com.pungwe.db.engine.io.store.*;
+import com.pungwe.db.engine.io.volume.RandomAccessFileVolume;
 import com.pungwe.db.engine.io.volume.Volume;
 import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
 import com.pungwe.db.core.utils.UUIDGen;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
 import java.util.*;
 import java.util.concurrent.*;
 import java.io.IOException;
@@ -440,6 +440,36 @@ public class BTreeMapTest {
         BaseMap<Long, Long> subMap = (BaseMap<Long, Long>)map.headMap(5l, true);
         for (long key = 1; key < 6; key++) {
             assertEquals(key, (long)subMap.get(key));
+        }
+    }
+
+    @Test
+    public void testHugeWrite() throws Exception {
+        File file = File.createTempFile("btree-", ".db");
+        try {
+            // 1MB buffer
+            store = new CachingStore(new BufferedRecordLogStore(new RandomAccessFileVolume(file), 1 << 30, -1), 10000);
+            final BTreeMap<Long, Long> map = new BTreeMap<>(store, (o1, o2) -> {
+                if (o1 == null || o2 == null) {
+                    throw new IllegalArgumentException("Keys cannot be null");
+                }
+                return o1.compareTo(o2);
+            }, new ObjectSerializer(), new ObjectSerializer(), 1024, -1);
+
+            // Timeout after 1 minute...
+            long start = System.nanoTime();
+            for (long i = 1; i < 3000000; i++) {
+                assert map.put(i, i) != null : "failed at " + i;
+            }
+            long end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to put ", (end - start) / 1000000000d));
+
+
+            for (long key = 0; key < 3000000; key++) {
+                assertEquals(key, (long) map.get(key));
+            }
+        } finally {
+            file.delete();
         }
     }
 }

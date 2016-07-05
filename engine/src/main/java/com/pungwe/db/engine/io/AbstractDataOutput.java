@@ -1,4 +1,4 @@
-package com.pungwe.db.engine.io.volume;
+package com.pungwe.db.engine.io;
 
 import java.io.DataOutput;
 import java.io.IOException;
@@ -9,11 +9,11 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Created by 917903 on 23/05/2016.
  */
-public abstract class VolumeDataOutput implements DataOutput {
+public abstract class AbstractDataOutput implements DataOutput {
 
     protected final AtomicLong position;
 
-    public VolumeDataOutput(long position) {
+    public AbstractDataOutput(long position) {
         this.position = new AtomicLong(position);
     }
 

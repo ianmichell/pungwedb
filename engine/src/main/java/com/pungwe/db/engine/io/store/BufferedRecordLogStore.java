@@ -1,8 +1,7 @@
 package com.pungwe.db.engine.io.store;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.pungwe.db.core.io.ByteBufferInputStream;
+import com.pungwe.db.engine.io.ByteBufferInputStream;
+import com.pungwe.db.engine.io.ByteBufferOutputStream;
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.core.registry.SerializerRegistry;
 import com.pungwe.db.engine.io.volume.Volume;
@@ -21,18 +20,22 @@ public class BufferedRecordLogStore implements Store {
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private final AtomicLong bufferPosition = new AtomicLong();
+    private final long bufferSize;
     private final ByteBuffer buffer;
     protected final Volume volume;
     protected final long maxEntries;
     protected Header header;
+    private AtomicLong bufferRecords = new AtomicLong();
 
     public BufferedRecordLogStore(Volume volume, int bufferSize, long maxEntries) throws IOException {
         this.volume = volume;
         this.maxEntries = maxEntries;
+        this.bufferSize = bufferSize;
         // Create a cache build for the file
         this.buffer = ByteBuffer.allocate(bufferSize);
         if (volume.length() > 0) {
             header = findHeader();
+            bufferPosition.set(header.getPosition());
         } else {
             header = new Header(this.getClass().getName(), Constants.BLOCK_SIZE, 0, 0, 0);
             // Ensure that the header is written, so that if we rollback, we can always find
@@ -44,11 +47,14 @@ public class BufferedRecordLogStore implements Store {
     @Override
     public Object get(long pointer, Serializer serializer) throws IOException {
         lock.readLock().lock();
+        int pos = (int)(pointer - bufferPosition.get());
         try {
-
-            DataInput input = pointer > bufferPosition.get() ? new DataInputStream(new ByteBufferInputStream(
-                    (ByteBuffer)buffer.asReadOnlyBuffer().position((int)(pointer - bufferPosition.get()))))
-                    : this.volume.getDataInput(pointer);
+            DataInput input = null;
+            if (pointer >= bufferPosition.get()) {
+                input = new ByteBufferInputStream((ByteBuffer)buffer.asReadOnlyBuffer().position(pos));
+            } else {
+                input = volume.getDataInput(pointer);
+            }
             byte type = input.readByte();
             switch (type) {
                 case 'R':
@@ -58,6 +64,10 @@ public class BufferedRecordLogStore implements Store {
             }
             input.skipBytes(20);
             return serializer.deserialize(input);
+        } catch (IllegalArgumentException ex) {
+            // FIXME: Remove this and replace with something better, but it should not happen...
+            ex.printStackTrace();
+            return null;
         } finally {
             lock.readLock().unlock();
         }
@@ -82,21 +92,31 @@ public class BufferedRecordLogStore implements Store {
                 previous = -1;
             }
 
-            // FIXME: We need a memory segment that this is written to, then pushed to disk on commit
-            ByteBuffer buffer = ByteBuffer.allocate(length);
-            buffer.put((byte) 'R');
-            buffer.putInt(data.length);
-            buffer.putLong(previous);
-            buffer.putLong(next);
-            buffer.put(data);
+            int start = (int)(position - bufferPosition.get());
 
-            if (this.buffer.remaining() < length) {
+            // FIXME: We need a memory segment that this is written to, then pushed to disk on commit
+            if (start >= buffer.limit() || this.buffer.remaining() < length) {
                 flush();
+                start = 0;
             }
-            this.buffer.put(buffer);
+
+            ByteBufferOutputStream outputStream = new ByteBufferOutputStream((ByteBuffer)buffer.duplicate()
+                    .position(start));
+            outputStream.writeByte((byte)'R');
+            outputStream.writeInt(data.length);
+            outputStream.writeLong(previous);
+            outputStream.writeLong(next);
+            outputStream.write(data);
+
+            int remainder = ((pages * Constants.BLOCK_SIZE) - data.length) - 21;
+            if (remainder > 0) {
+                // Skip to 4k
+                outputStream.write(new byte[remainder]);
+            }
 
             // Incremenent record size
             header.incrementSize();
+            bufferRecords.getAndIncrement();
 
             return position;
         } finally {
@@ -113,10 +133,10 @@ public class BufferedRecordLogStore implements Store {
 
     private void flush() throws IOException {
         DataOutput out = volume.getDataOutput(bufferPosition.get());
-        buffer.flip();
         out.write(buffer.array(), 0, buffer.limit());
         bufferPosition.addAndGet(buffer.limit());
         buffer.clear();
+        bufferRecords.set(0);
     }
 
     @Override
@@ -153,17 +173,17 @@ public class BufferedRecordLogStore implements Store {
 
     @Override
     public long size() {
-        return 0;
+        return header.getSize();
     }
 
     @Override
     public Volume getVolume() {
-        return null;
+        return this.volume;
     }
 
     @Override
     public long getPosition() {
-        return 0;
+        return header.getPosition();
     }
 
     @Override
@@ -186,7 +206,13 @@ public class BufferedRecordLogStore implements Store {
             long current = position;
             while (current >= 0) {
                 byte[] buffer = new byte[Constants.BLOCK_SIZE];
-                DataInput volumeInput = this.volume.getDataInput(current);
+                DataInput volumeInput = null;
+                if (position > bufferPosition.get()) {
+                    ByteBufferInputStream stream = new ByteBufferInputStream(this.buffer.asReadOnlyBuffer());
+                    volumeInput = new DataInputStream(stream);
+                } else {
+                    volumeInput = this.volume.getDataInput(current);
+                }
                 volumeInput.readFully(buffer);
                 byte firstByte = buffer[0];
                 if (firstByte == (byte) 'H') {
@@ -227,10 +253,18 @@ public class BufferedRecordLogStore implements Store {
             out.writeLong(header.getPosition());
             out.writeLong(header.getSize());
 
+            // Maximum size has to be
             byte[] headerBytes = bytes.toByteArray();
+            ByteBufferOutputStream dataOut = new ByteBufferOutputStream((ByteBuffer)buffer.duplicate()
+                    .position((int)(position - bufferPosition.get())));
+            dataOut.write(headerBytes);
+            int pages = (int)Math.ceil((double)headerBytes.length / header.getBlockSize());
+            int remainder = ((pages * Constants.BLOCK_SIZE) - headerBytes.length);
+            if (remainder > 0) {
+                // Skip to 4k
+                dataOut.write(new byte[remainder]);
+            }
 
-            DataOutput output = this.volume.getDataOutput(position);
-            output.write(headerBytes);
         } finally {
             lock.writeLock().unlock();
         }

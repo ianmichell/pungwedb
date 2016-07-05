@@ -1,5 +1,8 @@
 package com.pungwe.db.engine.io.volume;
 
+import com.pungwe.db.engine.io.AbstractDataInput;
+import com.pungwe.db.engine.io.AbstractDataOutput;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.EOFException;
@@ -154,7 +157,7 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
     // Workaround for File locking after .close() on Windows.
     private static boolean windowsWorkaround = System.getProperty("os.name").toLowerCase().startsWith("win");
 
-    private final class ByteBufferVolumeDataInput extends VolumeDataInput {
+    private final class ByteBufferVolumeDataInput extends AbstractDataInput {
 
         public ByteBufferVolumeDataInput(long offset) {
             super(offset);
@@ -187,7 +190,7 @@ public abstract class ByteBufferVolume extends AbstractGrowableVolume {
         }
     }
 
-    private final class ByteBufferVolumeDataOutput extends VolumeDataOutput {
+    private final class ByteBufferVolumeDataOutput extends AbstractDataOutput {
 
         public ByteBufferVolumeDataOutput(long offset) {
             super(offset);
