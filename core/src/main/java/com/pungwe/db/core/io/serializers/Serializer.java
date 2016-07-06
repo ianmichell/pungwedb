@@ -7,9 +7,9 @@ import java.io.IOException;
 /**
  * Created by 917903 on 24/05/2016.
  */
-public interface Serializer {
+public interface Serializer<E> {
 
-    void serialize(DataOutput out, Object value) throws IOException;
-    Object deserialize(DataInput in) throws IOException;
+    void serialize(DataOutput out, E value) throws IOException;
+    E deserialize(DataInput in) throws IOException;
     String getKey();
 }
