@@ -93,11 +93,9 @@ public class ByteBufferOutputStream extends OutputStream implements DataOutput {
                 return;
             }
             int s = (int) position.get();
-            ByteBuffer out = buffer.duplicate();
-            out.position(s);
             int n = Math.min(buffer.remaining(), remaining);
             for (int j = off; j < (off + n); j++) {
-                out.put(b[j]);
+                buffer.put(b[j]);
             }
             position.addAndGet(n);
         }

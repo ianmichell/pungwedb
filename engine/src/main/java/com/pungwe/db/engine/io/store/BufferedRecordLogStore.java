@@ -11,6 +11,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -20,39 +21,38 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class BufferedRecordLogStore implements Store {
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private final AtomicLong bufferPosition = new AtomicLong();
-    private final long bufferSize;
+    private final AtomicLong bufferFilePosition = new AtomicLong();
+    private final AtomicLong bufferRecords = new AtomicLong();
+    private final AtomicInteger bufferWritePosition = new AtomicInteger(0);
     private final ByteBuffer buffer;
     protected final Volume volume;
     protected final long maxEntries;
     protected Header header;
-    private AtomicLong bufferRecords = new AtomicLong();
 
     public BufferedRecordLogStore(Volume volume, int bufferSize, long maxEntries) throws IOException {
         this.volume = volume;
         this.maxEntries = maxEntries;
-        this.bufferSize = bufferSize;
         // Create a cache build for the file
         this.buffer = ByteBuffer.allocate(bufferSize);
         if (volume.length() > 0) {
             header = findHeader();
-            bufferPosition.set(header.getPosition());
+            bufferFilePosition.set(header.getPosition());
         } else {
-            header = new Header(this.getClass().getName(), Constants.BLOCK_SIZE, 0, 0, 0);
+            header = new Header(this.getClass().getName(), Constants.BLOCK_SIZE, 0, 0, 0, 0);
             // Ensure that the header is written, so that if we rollback, we can always find
             // the original
             writeHeader();
-            bufferPosition.set(getPosition());
+            bufferFilePosition.set(getPosition());
         }
     }
 
     @Override
     public Object get(long pointer, Serializer serializer) throws IOException {
         lock.readLock().lock();
-        int pos = (int)(pointer - bufferPosition.get());
+        int pos = (int)(pointer - bufferFilePosition.get());
         try {
             DataInput input = null;
-            if (pointer >= bufferPosition.get()) {
+            if (pointer >= bufferFilePosition.get()) {
                 input = new ByteBufferInputStream((ByteBuffer)buffer.asReadOnlyBuffer().position(pos));
             } else {
                 input = volume.getDataInput(pointer);
@@ -93,26 +93,37 @@ public class BufferedRecordLogStore implements Store {
                 previous = -1;
             }
 
-            int start = (int)(position - bufferPosition.get());
-
             // FIXME: We need a memory segment that this is written to, then pushed to disk on commit
-            if (start >= buffer.limit() || start + length >= buffer.limit()) {
+            if (bufferWritePosition.get() == buffer.limit() || bufferWritePosition.get() + length > buffer.limit()) {
                 flush();
-                start = 0;
             }
 
-            ByteBufferOutputStream outputStream = new ByteBufferOutputStream((ByteBuffer)buffer.duplicate()
-                    .position(start));
+            // Create a write buffer
+            ByteBuffer writeBuffer = buffer.duplicate();
+
+            // Set the position of the write buffer to the current position
+            writeBuffer.position(bufferWritePosition.get());
+
+            // Create an output stream that data will be written to and write the data
+            ByteBufferOutputStream outputStream = new ByteBufferOutputStream(writeBuffer);
             outputStream.writeByte((byte)'R');
-            outputStream.writeInt(data.length);
-            outputStream.writeLong(previous);
-            outputStream.writeLong(next);
+            outputStream.writeInt(data.length); // 5
+            outputStream.writeLong(previous); // 13
+            outputStream.writeLong(next); // 21
             outputStream.write(data);
 
-            // Incremenent record size
+            // Set the last record position in the header
+            header.setLastPosition(position);
+
+            // Set the buffer position
+            bufferWritePosition.set(writeBuffer.position());
+
+            // Increment the overall record size
             header.incrementSize();
+            // Increment the buffers record size
             bufferRecords.getAndIncrement();
 
+            // return the position written to the file
             return position;
         } finally {
             lock.writeLock().unlock();
@@ -125,11 +136,13 @@ public class BufferedRecordLogStore implements Store {
     }
 
     private void flush() throws IOException {
-        DataOutput out = volume.getDataOutput(bufferPosition.get());
-        out.write(buffer.array(), 0, buffer.limit());
-        bufferPosition.set(header.getPosition());
+        DataOutput out = volume.getDataOutput(bufferFilePosition.get());
+        ByteBuffer flushBuffer = buffer.duplicate();
+        out.write(flushBuffer.array(), 0, bufferWritePosition.get());
+        bufferFilePosition.set(header.getPosition());
         buffer.clear();
         bufferRecords.set(0);
+        bufferWritePosition.set(0);
     }
 
     @Override
@@ -144,7 +157,7 @@ public class BufferedRecordLogStore implements Store {
             flush();
             writeHeader();
             // Update buffer position
-            bufferPosition.set(header.getPosition());
+            bufferFilePosition.set(header.getPosition());
         } finally {
             lock.writeLock().unlock();
         }
@@ -156,7 +169,7 @@ public class BufferedRecordLogStore implements Store {
         try {
             header = findHeader();
             buffer.clear();
-            bufferPosition.set(header.getPosition());
+            bufferFilePosition.set(header.getPosition());
         } finally {
             lock.writeLock().unlock();
         }
@@ -192,7 +205,13 @@ public class BufferedRecordLogStore implements Store {
     }
 
     protected Header findHeader() throws IOException {
-        return findHeader(volume.length() - Constants.BLOCK_SIZE);
+        long position = volume.length();
+        if (position > header.getBlockSize() && (position % header.getBlockSize()) > 0) {
+            position = position - (position % header.getBlockSize());
+        } else {
+            position = position - Constants.BLOCK_SIZE;
+        }
+        return findHeader(position);
     }
 
     protected Header findHeader(final long position) throws IOException {
@@ -215,9 +234,10 @@ public class BufferedRecordLogStore implements Store {
                     }
                     int blockSize = input.readInt();
                     long firstOffset = input.readLong();
-                    long offset = input.readLong(); // this is the last record written
+                    long lastOffset = input.readLong();
+                    long offset = input.readLong(); // this is the current offset
                     long size = input.readLong();
-                    return new Header(store, blockSize, firstOffset, offset, size);
+                    return new Header(store, blockSize, firstOffset, offset, lastOffset, size);
                 }
                 current -= Constants.BLOCK_SIZE;
             }
@@ -235,10 +255,11 @@ public class BufferedRecordLogStore implements Store {
             long position = header.getPosition();
 
             if (position > 0 && position < header.getBlockSize()) {
-                position = alloc(header.getBlockSize() - position);
+                alloc(header.getBlockSize() - position);
             } else if ((position % header.getBlockSize()) > 0) {
-                position = alloc(header.getBlockSize() - (position % header.getBlockSize()));
+                alloc(header.getBlockSize() - (position % header.getBlockSize()));
             }
+            position = alloc(header.getBlockSize());
 
             // Write a byte array with the header...
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -247,12 +268,12 @@ public class BufferedRecordLogStore implements Store {
             out.writeUTF(header.getStore());
             out.writeInt(header.getBlockSize());
             out.writeLong(header.getFirstPosition());
+            out.writeLong(header.getLastPosition());
             out.writeLong(header.getPosition());
             out.writeLong(header.getSize());
 
             // Maximum size has to be
             byte[] headerBytes = Arrays.copyOf(bytes.toByteArray(), header.getBlockSize());
-            position = alloc(header.getBlockSize());
 
             DataOutput dataOut = volume.getDataOutput(position);
             dataOut.write(headerBytes);
@@ -310,7 +331,6 @@ public class BufferedRecordLogStore implements Store {
     protected class DataIterator implements Iterator<ByteBuffer> {
 
         protected final AtomicLong current = new AtomicLong(-1l);
-        protected final AtomicLong currentIndex = new AtomicLong(0);
         protected final Header header;
 
         public DataIterator() throws IOException {
@@ -325,7 +345,7 @@ public class BufferedRecordLogStore implements Store {
         @Override
         public boolean hasNext() {
             // Check that the current value is less than the position minus the header size...
-            return currentIndex.longValue() <= header.getSize();
+            return current.get() <= header.getLastPosition();
         }
 
         @Override
@@ -366,13 +386,12 @@ public class BufferedRecordLogStore implements Store {
         private void advance() throws IOException {
             long newPosition = findNextPosition(current.longValue());
             current.set(newPosition);
-            currentIndex.incrementAndGet();
         }
 
         private long findNextPosition(final long position) throws IOException {
             byte t = 0;
             long current = position;
-            while (t != 'R') {
+            while (t != 'R' && current < header.getLastPosition()) {
                 current = getNextPosition(current);
                 if (current > header.getPosition()) {
                     return current;
@@ -380,12 +399,6 @@ public class BufferedRecordLogStore implements Store {
                 t = getPositionType(current);
             }
             return current;
-        }
-
-        private byte getPositionType(long position) throws IOException {
-            DataInput input = volume.getDataInput(position);
-            byte t = input.readByte();
-            return t;
         }
 
         private long getNextPosition(final long position) throws IOException {
@@ -396,35 +409,33 @@ public class BufferedRecordLogStore implements Store {
                 return input.readLong();
             } else if (t == (byte)'H') {
                 return position + header.getBlockSize();
-            } else {
-                /* If it's not a record it's something else so scan forward until we find a header as it's always
-                 * at mod 0 header.getBlockSize();
-                 */
-                if (position > 0 && position < header.getBlockSize()) {
-                    return position + header.getBlockSize() - position;
-                } else if (position > header.getBlockSize() && (position % header.getBlockSize()) > 0) {
-                    return position + header.getBlockSize() - position % header.getBlockSize();
-                }
             }
-            // FIXME: We should not be here
-            assert t != 0;
-            return position;
+            // FIXME: We should not be here... But we will scan one byte at a time until we find a record or header
+            return position + 1;
+        }
+
+        private byte getPositionType(long position) throws IOException {
+            DataInput input = volume.getDataInput(position);
+            byte t = input.readByte();
+            return t;
         }
     }
 
     protected static class Header {
         protected final String store;
         protected final int blockSize;
+        protected final AtomicLong lastPosition = new AtomicLong(0);
         protected final AtomicLong firstPosition = new AtomicLong(0);
         protected final AtomicLong nextPosition = new AtomicLong(0);
         protected AtomicLong size = new AtomicLong(0);
         protected AtomicLong metaData = new AtomicLong(0);
 
-        public Header(String store, int blockSize, long firstPosition, long currentPosition, long size) {
+        public Header(String store, int blockSize, long firstPosition, long currentPosition, long lastPosition, long size) {
             this.store = store;
             this.blockSize = blockSize;
             this.firstPosition.set(firstPosition);
             this.nextPosition.set(currentPosition);
+            this.lastPosition.set(lastPosition);
             this.size.set(size);
         }
 
@@ -444,8 +455,12 @@ public class BufferedRecordLogStore implements Store {
             return firstPosition.longValue();
         }
 
-        public void setFirstPosition(long position) {
-            this.firstPosition.set(position);
+        public long getLastPosition() {
+            return lastPosition.get();
+        }
+
+        public void setLastPosition(long position) {
+            this.lastPosition.set(position);
         }
 
         public String getStore() {

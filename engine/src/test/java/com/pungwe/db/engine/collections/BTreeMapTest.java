@@ -179,7 +179,7 @@ public class BTreeMapTest {
     public void testMultiThreadInsertRandomAppendOnly() throws Exception {
 
         volume = new HeapByteBufferVolume("memory", false, 20, -1l);
-        store = new AppendOnlyStore(volume);
+        store = new BufferedRecordLogStore(volume, 16 << 20, -1);
 
         multiThreadInsert(store);
     }

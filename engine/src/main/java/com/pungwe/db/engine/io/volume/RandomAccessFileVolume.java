@@ -51,7 +51,7 @@ public final class RandomAccessFileVolume implements Volume {
     @Override
     public long length() {
         try {
-            return randomAccessFile.length();
+            return randomAccessFile.getChannel().size();
         } catch (IOException e) {
             return -1l;
         }

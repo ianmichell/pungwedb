@@ -1,19 +1,16 @@
 package com.pungwe.db.engine.io.store;
 
-import com.pungwe.db.engine.io.volume.ByteBufferVolume;
-import com.pungwe.db.engine.io.volume.HeapByteBufferVolume;
+import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.engine.io.volume.RandomAccessFileVolume;
 import com.pungwe.db.engine.io.volume.Volume;
-import com.pungwe.db.engine.utils.Constants;
-import com.pungwe.db.core.io.serializers.ObjectSerializer;
-import java.io.*;
-import java.util.*;
-import org.junit.Test;
 import org.junit.Before;
+import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertTrue;
+import java.io.DataInput;
+import java.io.File;
+import java.util.Iterator;
+
+import static org.junit.Assert.*;
 
 public class BufferedRecordLogStoreTest {
 
@@ -85,10 +82,10 @@ public class BufferedRecordLogStoreTest {
         this.store.commit();
 
         assertEquals(1000000, store.size());
-        int i = 0;
+        int i = 1;
         System.out.println("Iterating over a million records!");
         for (Object value : this.store) {
-            assertEquals(("my string " + ++i), (String)value);
+            assertEquals(("my string " + i++), (String)value);
         }
         assertEquals(1000000, i);
         System.out.println("Finished iterating over a million records!");
