@@ -1,11 +1,8 @@
 dependencies {
 
-    // Project core
     compile project(':core')
 
-    // Outer dependencies
     compile 'org.slf4j:slf4j-log4j12'
     compile 'org.apache.commons:commons-lang3'
     compile 'com.google.guava:guava'
-
 }

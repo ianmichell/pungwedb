@@ -7,6 +7,7 @@ import java.io.IOException;
 /**
  * Created by ian on 20/06/2016.
  */
+@Deprecated
 public class EncryptedSerializer implements Serializer {
 
     private final Serializer serializer;

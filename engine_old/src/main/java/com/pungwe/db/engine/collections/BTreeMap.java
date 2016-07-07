@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Created by ian on 25/05/2016.
  */
+@Deprecated
 public class BTreeMap<K, V> extends BaseMap<K, V> {
 
     private static final Logger log = LoggerFactory.getLogger(BTreeMap.class);
@@ -982,7 +983,7 @@ public class BTreeMap<K, V> extends BaseMap<K, V> {
     }
 
     // FIXME: Put a serializer Identifier in.
-    private final static class BTreeNodeSerializer implements Serializer {
+    public final static class BTreeNodeSerializer implements Serializer {
 
         final Serializer keySerializer, valueSerializer;
 

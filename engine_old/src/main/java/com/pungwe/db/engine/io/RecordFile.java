@@ -12,6 +12,7 @@ public interface RecordFile<E> extends Iterable<E> {
     E get(long position);
     Reader<E> reader() throws IOException;
     Reader<E> reader(long position) throws IOException;
+    Writer<E> writer() throws IOException;
 
     public interface Reader<E> extends Closeable, Iterator<E> {
 

@@ -38,7 +38,8 @@ public class BufferedRecordLogStore implements Store {
             header = findHeader();
             bufferFilePosition.set(header.getPosition());
         } else {
-            header = new Header(this.getClass().getName(), Constants.BLOCK_SIZE, 0, 0, 0, 0);
+            // First position will always be 4096
+            header = new Header(this.getClass().getName(), Constants.BLOCK_SIZE, 4096, 0, 0, 0);
             // Ensure that the header is written, so that if we rollback, we can always find
             // the original
             writeHeader();
@@ -407,11 +408,9 @@ public class BufferedRecordLogStore implements Store {
             if (t == 'R') {
                 input.skipBytes(13);
                 return input.readLong();
-            } else if (t == (byte)'H') {
-                return position + header.getBlockSize();
+            } else {
+                throw new IOException("Could not find a record");
             }
-            // FIXME: We should not be here... But we will scan one byte at a time until we find a record or header
-            return position + 1;
         }
 
         private byte getPositionType(long position) throws IOException {

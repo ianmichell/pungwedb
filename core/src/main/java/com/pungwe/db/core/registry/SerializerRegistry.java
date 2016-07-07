@@ -11,6 +11,7 @@ import java.util.Map;
 /**
  * Created by ian on 20/06/2016.
  */
+@Deprecated
 public class SerializerRegistry {
 
     private static SerializerRegistry INSTANCE;

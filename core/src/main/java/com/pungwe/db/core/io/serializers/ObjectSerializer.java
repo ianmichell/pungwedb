@@ -16,6 +16,7 @@ import java.util.*;
 /**
  * Created by ian on 25/05/2016.
  */
+@Deprecated
 public class ObjectSerializer implements Serializer {
 
     private static final byte NULL = 'N';

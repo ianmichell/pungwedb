@@ -16,12 +16,13 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 
+// FIXME: This might never be used, but proves the concept!
 /**
  * Created by 917903 on 06/07/2016.
  */
 public class CachedRecordFile<E> implements RecordFile<E> {
 
-    private final Cache<Long, E> cache;
+    private final Cache<Long, Record> cache;
     private final File file;
     private final Serializer<E> serializer;
     private final CachedRecordWriter writer;
@@ -36,15 +37,16 @@ public class CachedRecordFile<E> implements RecordFile<E> {
     @Override
     public E get(final long position) {
         try {
-            return cache.get(position, () -> {
+            Record record = cache.get(position, () -> {
                 FileChannel channel = new RandomAccessFile(file, "r").getChannel();
                 try {
                     channel.position(position);
-                    return read(channel).orElse(null);
+                    return read(channel).get();
                 } finally {
                     channel.close();
                 }
             });
+            return record.getValue();
         } catch (ExecutionException ex) {
             return null;
         }
@@ -73,21 +75,38 @@ public class CachedRecordFile<E> implements RecordFile<E> {
         return writer.append(value);
     }
 
-    public Writer<E> writer() {
+    public Writer<E> writer() throws IOException {
         return writer;
     }
 
-    private Optional<E> read(FileChannel channel) throws IOException {
+    private Optional<Record> read(FileChannel channel) throws IOException {
+        if (channel.position() >= channel.size()) {
+            return Optional.empty();
+        }
         ByteBuffer buffer = ByteBuffer.allocate(5).order(ByteOrder.BIG_ENDIAN);
         channel.read(buffer);
         buffer.flip();
         ByteBufferInputStream in = new ByteBufferInputStream(buffer);
-        Optional<E> v = Optional.empty();
+        // Ensure what we have is a record
+        byte t = in.readByte();
+        if (t != 'R') {
+            throw new IOException("Data at position:" + channel.position() + " is not a record: " + t);
+        }
+        // Get the record length
+        int length = in.readInt();
+        // Once we have the length, create a new byte buffer
+        buffer = ByteBuffer.allocate(length).order(ByteOrder.BIG_ENDIAN);
+        // Read into the buffer
+        channel.read(buffer);
+        buffer.flip();
+        // Replace the input stream
+        in = new ByteBufferInputStream(buffer);
+        Optional<Record> v = Optional.empty();
+        // deserialize the record into an object.
         E e = serializer.deserialize(in);
         if (e != null) {
-            v = Optional.of(e);
+            v = Optional.of(new Record(e, length, channel.position()));
         }
-        channel.position(channel.position() + buffer.limit());
         return v;
     }
 
@@ -95,6 +114,7 @@ public class CachedRecordFile<E> implements RecordFile<E> {
 
         private final RandomAccessFile randomAccessFile;
         private E next;
+        private AtomicLong position = new AtomicLong();
 
         public CachedRecordReader() throws IOException {
             this(0);
@@ -112,7 +132,7 @@ public class CachedRecordFile<E> implements RecordFile<E> {
 
         @Override
         public long getPosition() throws IOException {
-            return randomAccessFile.getChannel().position();
+            return position.get();
         }
 
         @Override
@@ -136,14 +156,20 @@ public class CachedRecordFile<E> implements RecordFile<E> {
                 return result;
             } catch (IOException ex) {
                 // put logging or something here
+                throw new RuntimeException(ex);
             }
-            return null;
         }
 
         private void advance() throws IOException {
             FileChannel channel = randomAccessFile.getChannel();
             try {
-                next = cache.get(channel.position(), () -> read(channel).orElse(null));
+                if (position.get() >= channel.size()) {
+                    next = null;
+                    return;
+                }
+                Record record = cache.get(position.get(), () -> read(channel.position(position.get())).get());
+                next = record.getValue();
+                position.set(record.getNextPosition());
             } catch (ExecutionException ex) {
                 throw new IOException(ex);
             }
@@ -167,11 +193,16 @@ public class CachedRecordFile<E> implements RecordFile<E> {
             DataOutputStream out = new DataOutputStream(bytes);
             serializer.serialize(out, value);
             byte[] written = bytes.toByteArray();
-            if (buffer.remaining() < written.length) {
+            if (buffer.remaining() < written.length + 5) {
                 sync();
             }
-            buffer.put(written);
-            return channel.position() + buffer.position();
+            ByteBufferOutputStream bufferOut = new ByteBufferOutputStream(buffer);
+            bufferOut.write((byte) 'R');
+            bufferOut.writeInt(written.length);
+            bufferOut.write(written);
+            long position = channel.position() + buffer.position();
+            cache.put(position, new Record(value, written.length, position));
+            return position;
         }
 
         @Override
@@ -183,7 +214,32 @@ public class CachedRecordFile<E> implements RecordFile<E> {
 
         @Override
         public void close() throws IOException {
+            sync();
             channel.close();
+        }
+    }
+
+    private class Record {
+        private final E value;
+        private final int size;
+        private final long nextPosition;
+
+        public Record(E value, int size, long nextPosition) {
+            this.value = value;
+            this.size = size;
+            this.nextPosition = nextPosition;
+        }
+
+        public E getValue() {
+            return value;
+        }
+
+        public int getSize() {
+            return size;
+        }
+
+        public long getNextPosition() {
+            return nextPosition;
         }
     }
 }

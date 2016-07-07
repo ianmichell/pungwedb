@@ -9,6 +9,7 @@ import java.io.*;
 /**
  * Created by 917903 on 24/05/2016.
  */
+@Deprecated
 public class LZ4Serializer implements Serializer {
 
     private final Serializer serializer;
