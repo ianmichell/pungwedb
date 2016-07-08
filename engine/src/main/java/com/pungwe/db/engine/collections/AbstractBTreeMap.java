@@ -913,4 +913,39 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             map.clear();
         }
     }
+
+    protected static abstract class Node<K, T> {
+
+        protected List<K> keys = new ArrayList<K>();
+        protected Comparator<K> comparator;
+
+        public Node(Comparator<K> comparator) {
+            this.comparator = comparator;
+        }
+
+        public List<K> getKeys() {
+            return keys;
+        }
+
+        public int findPosition(K key) {
+            return Collections.binarySearch(keys, key, comparator);
+        }
+
+        public int findNearest(K key) {
+            int pos = findPosition(key);
+            // If the position is positive, the key exists
+            if (pos >= 0) {
+                return pos;
+            }
+            // Key doesn't exist
+            pos = -(pos) - 1;
+            return pos >= keys.size() ? keys.size() - 1 : pos;
+        }
+
+        public abstract void put(K key, T value);
+
+        public abstract T get(K key);
+
+        public abstract Node<K, T>[] split();
+    }
 }

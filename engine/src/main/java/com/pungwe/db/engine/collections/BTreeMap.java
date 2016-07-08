@@ -1,103 +1,97 @@
 package com.pungwe.db.engine.collections;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Created by ian on 07/07/2016.
  */
-public class BTreeMap<K,V> extends AbstractBTreeMap<K,V> {
+public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
-    protected final int maxKeysPerBlock;
-    protected Block<? extends Node> root;
+    protected final int maxKeysPerNode;
     protected final AtomicLong size = new AtomicLong();
+    protected Node<K, ?> root;
 
-    public BTreeMap(Comparator<K> comparator, int maxKeysPerBlock) {
+    public BTreeMap(Comparator<K> comparator, int maxKeysPerNode) {
         super(comparator);
-        root = new Block<>(Leaf.class);
-        this.maxKeysPerBlock = maxKeysPerBlock;
+        this.maxKeysPerNode = maxKeysPerNode;
+
     }
 
     @SuppressWarnings("unchecked")
     @Override
     protected BTreeEntry<K, V> putEntry(Entry<? extends K, ? extends V> entry) {
-        Block<? extends Node<K>> block = root;
-
-        Stack<Block<Branch<? extends Node<K>>>> parents = new Stack<>();
-        while (Branch.class.isAssignableFrom(block.getType())) {
-            parents.push((Block<Branch<? extends Node<K>>>) block);
-            Branch<?> branch = (Branch<?>)block.getNearest(entry.getKey());
-            int cmp = comparator.compare(branch.getKey(), entry.getKey());
-            if (cmp < 0) {
-                block = branch.getLeft();
+        if (entry == null || entry.getKey() == null) {
+            return null;
+        }
+        Stack<Node<K, ?>> stack = new Stack<>();
+        Node<K, ?> node = root;
+        stack.push(node);
+        while (Branch.class.isAssignableFrom(node.getClass())) {
+            int pos = node.findNearest(entry.getKey());
+            K found = node.getKeys().get(pos);
+            Node[] children = ((Branch<K>) node).get(found);
+            if (comparator.compare(found, entry.getKey()) <= 0) {
+                // Swing to the left
+                node = children[0];
             } else {
-                block = branch.getRight();
+                node = children[1];
             }
+            stack.push(node);
         }
-
-        Leaf leaf = new Leaf(entry.getKey(), entry.getValue(), false);
-        boolean insert = block.getNode(entry.getKey()) != null;
-        ((Block<Leaf>)block).putNode(leaf);
-
-        if (block.size() > maxKeysPerBlock) {
-            Block<Branch<?>> parent = parents.isEmpty() ? null : parents.pop();
-            Branch<?> branch = block.split();
-            if (parent == null) {
-                parent = new Block<>((Class<Branch<?>>)branch.getClass());
-                parents.push(parent);
-            }
-            parent.putNode(branch);
-            checkAndSplit(parents);
-        }
-        if (insert) {
-            size.getAndIncrement();
-        }
-        return leaf;
+        Leaf<K, V> leaf = (Leaf<K, V>) node;
+        leaf.put(entry.getKey(), new Pair<V>(entry.getValue(), false));
+        checkAndSplit(stack);
+        return new BTreeEntry<>(entry.getKey(), entry.getValue(), false);
     }
 
     @SuppressWarnings("unchecked")
-    private void checkAndSplit(Stack<Block<Branch<? extends Node<K>>>> parents) {
-        // Get the current parent
-        Block<Branch<? extends Node<K>>> check = parents.pop();
-        if (check.size() <= maxKeysPerBlock) {
-            // Do nothing
-            return;
-        }
-        Branch<? extends Node<K>> branch = check.split();
-        Block<Branch<? extends Node<K>>> parent = null;
-        // New root
+    private void checkAndSplit(Stack<Node<K, ?>> parents) {
         if (parents.isEmpty()) {
-            parent = new Block<>((Class<Branch<? extends Node<K>>>)branch.getClass());
-            parent.putNode(branch);
-            root = parent;
+            return; // Do nothing
+        }
+        Node<K, ?> node = parents.pop();
+        if (node.getKeys().size() < maxKeysPerNode) {
+            return; // do nothing
+        }
+
+        int mid = node.getKeys().size() - 1 >>> 1;
+        // Key for split
+        K key = node.getKeys().get(mid);
+
+        // Split to left and right
+        Node<K, ?>[] split = node.split();
+        // New root node!!
+        if (parents.isEmpty()) {
+            root = new Branch<>(comparator);
+            ((Branch<K>)root).put(key, split);
             return;
         }
-        // Peek the parent from the stack
-        parent = parents.peek();
-        parent.putNode(branch);
-        // Check and split again...
+        // Peek, don't pop
+        Branch<K> parent = (Branch<K>)parents.peek();
+        parent.put(key, split);
+        // Check and split again!
         checkAndSplit(parents);
     }
 
     @Override
     protected BTreeEntry<K, V> getEntry(K key) {
-        Block<? extends Node<K>> block = root;
-        while (Branch.class.isAssignableFrom(block.getType())) {
-            Branch<?> branch = (Branch<?>)block.getNearest(key);
-            int cmp = comparator.compare(branch.getKey(), key);
-            if (cmp < 0) {
-                block = branch.getLeft();
-            } else {
-                block = branch.getRight();
-            }
-        }
-        return (Leaf)block.getNode(key);
+        Leaf leaf = findLeafForGet(key);
+        Pair<V> value = leaf == null ? null : leaf.get(key);
+        return value == null || value.isDeleted() ? null : new BTreeEntry<K, V>(key, value.getValue(), false);
     }
 
     @Override
     protected V removeEntry(K key) {
-        return null;
+        Leaf leaf = findLeafForGet(key);
+        Pair<V> pair = leaf.get(key);
+        if (pair == null) {
+            return null;
+        }
+        pair.setDeleted(true);
+        size.decrementAndGet();
+        return pair.getValue();
     }
 
     @Override
@@ -105,237 +99,460 @@ public class BTreeMap<K,V> extends AbstractBTreeMap<K,V> {
         return size.get();
     }
 
+    @SuppressWarnings("unchecked")
+    private Leaf findLeafForGet(K key) {
+        Node<K, ?> node = root;
+        while (Branch.class.isAssignableFrom(node.getClass())) {
+            int pos = (node).findNearest(key);
+            node = ((Branch<K>) node).getChildren().get(pos);
+        }
+        return (Leaf<K, V>) node;
+    }
+
     @Override
     protected Iterator<Entry<K, V>> iterator(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
-        return null;
+        return new BTreeMapIterator(comparator, fromKey, fromInclusive, toKey, toInclusive);
     }
 
     @Override
     protected Iterator<Entry<K, V>> reverseIterator(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
-        return null;
+        return new ReverseBTreeMapIterator((o1, o2) -> -comparator.compare(o1, o2), fromKey, fromInclusive,
+                toKey, toInclusive);
     }
 
     @Override
     public void clear() {
-
+        Iterator<Entry<K, V>> it = iterator();
+        while (it.hasNext()) {
+            it.remove();
+        }
     }
 
-    private final class Block<T extends Node<K>> implements Iterable<T> {
+    private static class Branch<K> extends Node<K, Node[]> {
 
-        private final Class<T> type;
-        private final Branch<? extends T> parent;
-        // Array list will grow by block.
-        private final List<T> entries;
+        List<Node> children = new ArrayList<>();
 
-        public Block(Class<T> clz) {
-            entries = new ArrayList<>();
-            parent = null;
-            type = clz;
+        public Branch(Comparator<K> comparator) {
+            super(comparator);
         }
 
-        public Block(Class<T> clz, List<T> entries) {
-            this.entries = entries;
-            this.parent = null;
-            this.type = clz;
-        }
-
-        public Block(Class<T> clz, List<T> entries, Branch<? extends T> parent) {
-            this.entries = entries;
-            this.parent = parent;
-            this.type = clz;
-        }
-
-        @SuppressWarnings("unchecked")
-        public T putNode(T node) {
-            // FIXME: Ensure that we change left and right on the lesser and greater nodes
-            int pos = findPosition(node.getKey());
-            boolean insert = pos < 0;
-            pos =  pos < 0 ? -(pos + 1) : pos;
-            // Insert operation we add the node to the list, otherwise we set it's position
-            if (insert) {
-                entries.add(pos, node);
+        @Override
+        public void put(K key, Node[] value) {
+            int nearest = findNearest(key);
+            K found = keys.get(nearest);
+            int cmp = comparator.compare(found, key);
+            // Already exists, so replace it
+            if (cmp == 0) {
+                keys.set(nearest, key);
+                children.set(nearest, value[0]);
+                children.set(nearest + 1, value[1]);
+            } else if (cmp < 0) {
+                keys.add(nearest + 1, key);
+                children.set(nearest + 1, value[0]);
+                children.add(nearest + 2, value[1]);
             } else {
-                entries.set(pos, node);
+                keys.add(nearest, key);
+                children.add(nearest, value[0]);
+                children.set(nearest + 1, value[1]);
             }
-            // If this is a branch block, we need to update the left and the right
-            if (Leaf.class.isAssignableFrom(type)) {
-                return node;
-            }
-
-            Branch<?> branch = (Branch<?>)node;
-
-            int leftPos = pos - 1;
-            int rightPos = pos + 1;
-            if (leftPos >= 0) {
-                Branch<?> left = (Branch<?>)entries.get(leftPos);
-                left.setRight(branch.getLeft());
-            }
-            if (rightPos < entries.size()) {
-                Branch<?> right = (Branch<?>)entries.get(rightPos);
-                right.setLeft(branch.getRight());
-            }
-            return node;
         }
 
-        public Branch<T> split() {
-            int mid = (entries.size() - 1) >>> 1;
-            K key = entries.get(mid).getKey();
-            List<T> leftEntries = entries.subList(0, mid + 1);
-            List<T> rightEntries = entries.subList(mid, entries.size());
-            // we are splitting this block, so "type" is the same as this block
-            return new Branch<T>(key, new Block<>(type, leftEntries), new Block<>(type, rightEntries));
+        @Override
+        public Node<K, Node[]>[] split() {
+            int mid = keys.size() - 1 >>> 1;
+            Branch<K> left = new Branch<K>(comparator);
+            left.keys = keys.subList(0, mid);
+            left.children = children.subList(0, mid + 1);
+            Branch<K> right = new Branch<K>(comparator);
+            right.keys = keys.subList(mid + 1, keys.size());
+            right.children = children.subList(mid + 1, children.size());
+            return new Node[] { left, right };
         }
 
-        public T getNode(K key) {
+        public List<Node> getChildren() {
+            return children;
+        }
+
+        @Override
+        public Node[] get(K key) {
+            int pos = findNearest(key);
+            return new Node[]{children.get(pos), children.get(pos + 1)};
+        }
+    }
+
+    private static class Leaf<K, V> extends Node<K, Pair<V>> {
+
+        private List<Pair<V>> values = new ArrayList<>();
+
+        public Leaf(Comparator<K> comparator) {
+            super(comparator);
+        }
+
+        @Override
+        public void put(K key, Pair<V> value) {
+            int nearest = findNearest(key);
+            K found = keys.get(nearest);
+            int cmp = comparator.compare(found, key);
+            if (cmp == 0) {
+                keys.set(nearest, key);
+                values.set(nearest, value);
+            } else if (cmp < 0) {
+                // found is lower
+                keys.add(nearest + 1, key);
+                values.add(nearest + 1, value);
+            } else {
+                keys.add(nearest, key);
+                values.add(nearest, value);
+            }
+        }
+
+        @Override
+        public Pair<V> get(K key) {
             int pos = findPosition(key);
-            return pos < 0 ? null : entries.get(pos);
+            return pos < 0 ? null : values.get(pos);
         }
 
-        public T getNearest(K key) {
-            int pos = findPosition(key);
-            pos = pos < 0 ? -(pos + 1) : pos;
-            if (pos < entries.size()) {
-                return entries.get(pos);
-            }
-            return entries.get(pos - 1);
-        }
-
-        public Class<T> getType() {
-            return type;
-        }
-
-        public Branch<? extends T> getParent() {
-            return parent;
-        }
-
-        public List<T> getEntries() {
-            return entries;
+        public List<Pair<V>> getValues() {
+            return values;
         }
 
         @Override
-        public Iterator<T> iterator() {
-            return entries.iterator();
-        }
+        public Node<K, Pair<V>>[] split() {
+            int mid = keys.size() - 1 >>> 1;
+            Leaf<K, V> left = new Leaf<>(comparator);
+            left.keys = keys.subList(0, mid);
+            left.values = values.subList(0, mid);
+            Leaf<K, V> right = new Leaf<>(comparator);
+            right.keys = keys.subList(mid + 1, keys.size());
+            right.values = values.subList(mid + 1, values.size());
 
-        public int size() {
-            return entries.size();
-        }
-
-        private int findPosition(K key) {
-            return Collections.binarySearch(entries, new KeyNode(key), (o1, o2) -> comparator.compare(o1.getKey(),
-                    o2.getKey()));
+            return new Node[] { left, right };
         }
     }
 
-    protected interface Node<K> extends Comparable<Node<K>> {
+    private static class Pair<V> {
+        public V value;
+        public boolean deleted;
 
-        K getKey();
-        Comparator<K> comparator();
+        public Pair(V value, boolean deleted) {
+            this.value = value;
+            this.deleted = deleted;
+        }
 
-        @Override
-        default int compareTo(Node<K> o) {
-            return comparator().compare(getKey(), o.getKey());
+        public V getValue() {
+            return value;
+        }
+
+        public void setValue(V value) {
+            this.value = value;
+        }
+
+        public boolean isDeleted() {
+            return deleted;
+        }
+
+        public void setDeleted(boolean deleted) {
+            this.deleted = deleted;
         }
     }
 
-    private class KeyNode implements Node<K> {
+    private class BTreeMapIterator implements Iterator<Entry<K, V>> {
 
-        private final K key;
-
-        public KeyNode(K key) {
-            this.key = key;
-        }
-
-        @Override
-        public K getKey() {
-            return key;
-        }
-
-        @Override
-        public Comparator<K> comparator() {
-            return comparator;
-        }
-    }
-
-    protected class Branch<T extends Node<K>> implements Node<K> {
-
-        private final K key;
-        private Block<T> left;
-        private Block<T> right;
-
-        public Branch(K key, Block<T> left, Block<T> right) {
-            this.key = key;
-            this.left = left;
-            this.right = right;
-        }
-
-        @Override
-        public Comparator<K> comparator() {
-            return comparator;
-        }
-
-        @Override
-        public K getKey() {
-            return key;
-        }
-
-        public Block<T> getLeft() {
-            return left;
-        }
-
-        public Block<T> getRight() {
-            return right;
-        }
-
-        @SuppressWarnings("unchecked")
-        public void setLeft(Block<?> left) {
-            this.left = (Block<T>)left;
-        }
-
-        @SuppressWarnings("unchecked")
-        public void setRight(Block<?> right) {
-            this.right = (Block<T>)right;
-        }
-    }
-
-    protected class Leaf extends BTreeEntry<K,V> implements Node<K> {
-
-        public Leaf(K key, V value, boolean deleted) {
-            super(key, value, deleted);
-        }
-
-        @Override
-        public Comparator<K> comparator() {
-            return comparator;
-        }
-    }
-
-    private class EntryIterator implements Iterator<Leaf> {
-
-        private final K from, to;
-        private final boolean fromInclusive, toInclusive;
+        private final K to;
+        private final boolean toInclusive, excludeDeleted;
         private final Comparator<K> comparator;
+        // Iteration...
+        private final Stack<Branch<K>> stack = new Stack<>();
+        private final Stack<AtomicInteger> stackPos = new Stack<>();
+        private final AtomicInteger leafPos = new AtomicInteger();
+        private Leaf<K, V> leaf;
+        private Pair<V> last;
 
-        public EntryIterator(K from, K to, boolean fromInclusive, boolean toInclusive, Comparator<K> comparator) {
-            this.from = from;
+        private BTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to, boolean toInclusive) {
+            this(comparator, from, fromInclusive, to, toInclusive, true);
+        }
+
+        private BTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to, boolean toInclusive,
+                                 boolean excludeDeleted) {
             this.to = to;
-            this.fromInclusive = fromInclusive;
             this.toInclusive = toInclusive;
             this.comparator = comparator;
-        }
+            this.excludeDeleted = excludeDeleted;
 
-        private void pointToStart() {
-            
+            if (from == null) {
+                pointToStart();
+            } else {
+                // Find the starting point
+                findLeaf(from);
+                int pos = leaf.findNearest(from);
+                K k = leaf.getKeys().get(pos);
+                int comp = comparator.compare((K) from, k);
+                if (comp > 0) {
+                    leafPos.set(pos);
+                } else if (comp == 0) {
+                    leafPos.set(fromInclusive ? pos : pos + 1);
+                } else if (comp < 0) {
+                    leafPos.set(pos);
+                }
+            }
         }
 
         @Override
         public boolean hasNext() {
-            return false;
+            if (leaf == null) {
+                return false;
+            }
+            while (leaf != null && excludeDeleted) {
+                Pair<V> value = leaf.getValues().get(leafPos.get());
+                if (!value.isDeleted()) {
+                    break; // break out.
+                }
+                advance();
+            }
+            if (leafPos.get() >= leaf.getValues().size()) {
+                advance();
+            } else if (to != null) {
+                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                if (comp > 0 || (comp == 0 && !toInclusive)) {
+                    leaf = null;
+                    leafPos.set(-1);
+                    stack.clear();
+                    stackPos.clear();
+                }
+            }
+            return leaf != null;
         }
 
         @Override
-        public Leaf next() {
-            return null;
+        @SuppressWarnings("unchecked")
+        public Entry<K, V> next() {
+            if (!hasNext()) {
+                return null;
+            }
+            K key = leaf.getKeys().get(leafPos.get());
+            Pair<V> child = leaf.getValues().get(leafPos.getAndIncrement());
+            advance();
+            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
+        }
+
+        @Override
+        public void remove() {
+            last.setDeleted(true);
+            last = null;
+            // Decrement
+            size.decrementAndGet();
+        }
+
+        @SuppressWarnings("unchecked")
+        private void pointToStart() {
+            Node<K, ?> node = root;
+            while (Branch.class.isAssignableFrom(node.getClass())) {
+                stack.push((Branch<K>) node);
+                stackPos.push(new AtomicInteger(1));
+                node = ((Branch<K>) node).getChildren().get(0);
+            }
+            leaf = (Leaf<K, V>) node;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void findLeaf(K key) {
+            Node<K, ?> node = root;
+            while (Branch.class.isAssignableFrom(node.getClass())) {
+                stack.push((Branch<K>) node);
+                int pos = (node).findNearest(key);
+                stackPos.push(new AtomicInteger(pos + 1));
+                node = ((Branch<K>) node).getChildren().get(pos);
+            }
+            leaf = (Leaf<K, V>) node;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void advance() {
+            if (leaf != null && leafPos.get() < leaf.getValues().size()) {
+                return; // nothing to see here
+            }
+
+            leaf = null;
+            leafPos.set(-1); // reset to 0
+
+            if (stack.isEmpty()) {
+                return; // nothing to see here
+            }
+
+            Branch<K> parent = stack.peek(); // get the immediate parent
+
+            int pos = stackPos.peek().getAndIncrement(); // get the immediate parent position.
+            if (pos < parent.getChildren().size()) {
+                Node<K, ?> child = parent.getChildren().get(pos);
+                if (Leaf.class.isAssignableFrom(child.getClass())) {
+                    leaf = (Leaf<K, V>) child;
+                    leafPos.set(0);
+                } else {
+                    stack.push((Branch<K>) child);
+                    stackPos.push(new AtomicInteger(0));
+                    advance();
+                    return;
+                }
+            } else {
+                stack.pop(); // remove last node
+                stackPos.pop();
+                advance();
+                return;
+            }
+
+            if (to != null && leaf != null) {
+                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                if (comp > 0 || (comp == 0 && !toInclusive)) {
+                    leaf = null;
+                    leafPos.set(-1);
+                }
+            }
+        }
+    }
+
+    private class ReverseBTreeMapIterator implements Iterator<Entry<K, V>> {
+
+        private final K to;
+        private final boolean toInclusive, excludeDeleted;
+        private final Comparator<K> comparator;
+        // Iteration...
+        private final Stack<Branch<K>> stack = new Stack<>();
+        private final Stack<AtomicInteger> stackPos = new Stack<>();
+        private final AtomicInteger leafPos = new AtomicInteger();
+        private Leaf<K, V> leaf;
+
+        private ReverseBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to,
+                                        boolean toInclusive) {
+            this(comparator, from, fromInclusive, to, toInclusive, true);
+        }
+
+        private ReverseBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to,
+                                        boolean toInclusive, boolean excludeDeleted) {
+            this.to = to;
+            this.toInclusive = toInclusive;
+            this.comparator = comparator;
+            this.excludeDeleted = excludeDeleted;
+
+            if (from == null) {
+                pointToStart();
+            } else {
+                // Find the starting point
+                findLeaf(from);
+                int pos = leaf.findNearest(from);
+                K k = leaf.getKeys().get(pos);
+                int comp = comparator.compare((K) from, k);
+                if (comp > 0) {
+                    leafPos.set(pos);
+                } else if (comp == 0) {
+                    leafPos.set(fromInclusive ? pos : pos - 1);
+                } else if (comp < 0) {
+                    leafPos.set(pos);
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (leaf == null) {
+                return false;
+            }
+            while (leaf != null && excludeDeleted) {
+                Pair<V> value = leaf.getValues().get(leafPos.get());
+                if (!value.isDeleted()) {
+                    break; // break out.
+                }
+                advance();
+            }
+            if (leafPos.get() >= 0) {
+                advance();
+            } else if (to != null) {
+                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                if (comp > 0 || (comp == 0 && !toInclusive)) {
+                    leaf = null;
+                    leafPos.set(-1);
+                    stack.clear();
+                    stackPos.clear();
+                }
+            }
+            return leaf != null;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Entry<K, V> next() {
+            if (!hasNext()) {
+                return null;
+            }
+            K key = leaf.getKeys().get(leafPos.get());
+            Pair<V> child = leaf.getValues().get(leafPos.getAndDecrement());
+            advance();
+            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
+        }
+
+        @SuppressWarnings("unchecked")
+        private void pointToStart() {
+            Node<K, ?> node = root;
+            while (Branch.class.isAssignableFrom(node.getClass())) {
+                stack.push((Branch<K>) node);
+                stackPos.push(new AtomicInteger(((Branch<K>) node).getChildren().size() - 2));
+                node = ((Branch<K>) node).getChildren().get(((Branch<K>) node).getChildren().size() - 1);
+            }
+            leaf = (Leaf<K, V>) node;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void findLeaf(K key) {
+            Node<K, ?> node = root;
+            while (Branch.class.isAssignableFrom(node.getClass())) {
+                stack.push((Branch<K>) node);
+                int pos = (node).findNearest(key);
+                stackPos.push(new AtomicInteger(pos - 1));
+                node = ((Branch<K>) node).getChildren().get(pos);
+            }
+            leaf = (Leaf<K, V>) node;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void advance() {
+            if (leaf != null && leafPos.get() >= 0) {
+                return; // nothing to see here
+            }
+
+            leaf = null;
+            leafPos.set(-1); // reset to 0
+
+            if (stack.isEmpty()) {
+                return; // nothing to see here
+            }
+
+            Branch<K> parent = stack.peek(); // get the immediate parent
+
+            int pos = stackPos.peek().getAndDecrement(); // get the immediate parent position.
+            if (pos >= 0) {
+                Node<K, ?> child = parent.getChildren().get(pos);
+                if (Leaf.class.isAssignableFrom(child.getClass())) {
+                    leaf = (Leaf<K, V>) child;
+                    leafPos.set(0);
+                } else {
+                    stack.push((Branch<K>) child);
+                    stackPos.push(new AtomicInteger(((Branch<K>) child).getChildren().size()));
+                    advance();
+                    return;
+                }
+            } else {
+                stack.pop(); // remove last node
+                stackPos.pop();
+                advance();
+                return;
+            }
+
+            if (to != null && leaf != null) {
+                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                if (comp > 0 || (comp == 0 && !toInclusive)) {
+                    leaf = null;
+                    leafPos.set(-1);
+                }
+            }
         }
     }
 }
