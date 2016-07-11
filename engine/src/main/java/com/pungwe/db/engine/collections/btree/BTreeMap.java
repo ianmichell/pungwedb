@@ -1,4 +1,17 @@
-package com.pungwe.db.engine.collections;
+/*
+ * Copyright (C) 2016 Ian Michell.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the
+ * License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.pungwe.db.engine.collections.btree;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -16,7 +29,12 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     public BTreeMap(Comparator<K> comparator, int maxKeysPerNode) {
         super(comparator);
         this.maxKeysPerNode = maxKeysPerNode;
+        this.root = new Leaf<>(comparator);
+    }
 
+    @Override
+    protected Node<K, ?> rootNode() {
+        return root;
     }
 
     @SuppressWarnings("unchecked")
@@ -28,15 +46,15 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         Stack<Node<K, ?>> stack = new Stack<>();
         Node<K, ?> node = root;
         stack.push(node);
-        while (Branch.class.isAssignableFrom(node.getClass())) {
+        while (MutableBranch.class.isAssignableFrom(node.getClass())) {
             int pos = node.findNearest(entry.getKey());
             K found = node.getKeys().get(pos);
-            Node[] children = ((Branch<K>) node).get(found);
+            Node[] children = ((MutableBranch<K>) node).get(found);
             if (comparator.compare(found, entry.getKey()) <= 0) {
-                // Swing to the left
-                node = children[0];
-            } else {
+                // Swing to the right
                 node = children[1];
+            } else {
+                node = children[0];
             }
             stack.push(node);
         }
@@ -64,12 +82,12 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         Node<K, ?>[] split = node.split();
         // New root node!!
         if (parents.isEmpty()) {
-            root = new Branch<>(comparator);
-            ((Branch<K>)root).put(key, split);
+            root = new MutableBranch<>(comparator);
+            ((MutableBranch<K>) root).put(key, split);
             return;
         }
         // Peek, don't pop
-        Branch<K> parent = (Branch<K>)parents.peek();
+        MutableBranch<K> parent = (MutableBranch<K>) parents.peek();
         parent.put(key, split);
         // Check and split again!
         checkAndSplit(parents);
@@ -102,9 +120,16 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     @SuppressWarnings("unchecked")
     private Leaf findLeafForGet(K key) {
         Node<K, ?> node = root;
-        while (Branch.class.isAssignableFrom(node.getClass())) {
+        while (MutableBranch.class.isAssignableFrom(node.getClass())) {
             int pos = (node).findNearest(key);
-            node = ((Branch<K>) node).getChildren().get(pos);
+            K found = node.getKeys().get(pos);
+            Node[] children = ((MutableBranch<K>) node).get(found);
+            int cmp = comparator.compare(found, key);
+            if (cmp <= 0) {
+                node = children[1];
+            } else {
+                node = children[0];
+            }
         }
         return (Leaf<K, V>) node;
     }
@@ -128,131 +153,59 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         }
     }
 
-    private static class Branch<K> extends Node<K, Node[]> {
+    private static class MutableBranch<K> extends Branch<K, Node> {
 
-        List<Node> children = new ArrayList<>();
-
-        public Branch(Comparator<K> comparator) {
-            super(comparator);
+        public MutableBranch(Comparator<K> comparator) {
+            super(comparator, new ArrayList<>());
         }
 
         @Override
         public void put(K key, Node[] value) {
+            if (keys.isEmpty()) {
+                keys.add(key);
+                getChildren().addAll(Arrays.asList(value));
+                return;
+            }
             int nearest = findNearest(key);
             K found = keys.get(nearest);
             int cmp = comparator.compare(found, key);
             // Already exists, so replace it
             if (cmp == 0) {
                 keys.set(nearest, key);
-                children.set(nearest, value[0]);
-                children.set(nearest + 1, value[1]);
+                getChildren().set(nearest, value[0]);
+                getChildren().set(nearest + 1, value[1]);
             } else if (cmp < 0) {
                 keys.add(nearest + 1, key);
-                children.set(nearest + 1, value[0]);
-                children.add(nearest + 2, value[1]);
+                getChildren().set(nearest + 1, value[0]);
+                getChildren().add(nearest + 2, value[1]);
             } else {
                 keys.add(nearest, key);
-                children.add(nearest, value[0]);
-                children.set(nearest + 1, value[1]);
+                getChildren().add(nearest, value[0]);
+                getChildren().set(nearest + 1, value[1]);
             }
         }
 
         @Override
         public Node<K, Node[]>[] split() {
             int mid = keys.size() - 1 >>> 1;
-            Branch<K> left = new Branch<K>(comparator);
-            left.keys = keys.subList(0, mid);
-            left.children = children.subList(0, mid + 1);
-            Branch<K> right = new Branch<K>(comparator);
-            right.keys = keys.subList(mid + 1, keys.size());
-            right.children = children.subList(mid + 1, children.size());
-            return new Node[] { left, right };
-        }
-
-        public List<Node> getChildren() {
-            return children;
+            MutableBranch<K> left = new MutableBranch<K>(comparator);
+            left.keys = new ArrayList<>();
+            left.keys.addAll(keys.subList(0, mid));
+            left.getChildren().addAll(getChildren().subList(0, mid + 1));
+            MutableBranch<K> right = new MutableBranch<K>(comparator);
+            right.keys = new ArrayList<K>();
+            right.keys.addAll(keys.subList(mid + 1, keys.size()));
+            right.getChildren().addAll(getChildren().subList(mid + 1, getChildren().size()));
+            return new Node[]{left, right};
         }
 
         @Override
         public Node[] get(K key) {
             int pos = findNearest(key);
-            return new Node[]{children.get(pos), children.get(pos + 1)};
-        }
-    }
-
-    private static class Leaf<K, V> extends Node<K, Pair<V>> {
-
-        private List<Pair<V>> values = new ArrayList<>();
-
-        public Leaf(Comparator<K> comparator) {
-            super(comparator);
-        }
-
-        @Override
-        public void put(K key, Pair<V> value) {
-            int nearest = findNearest(key);
-            K found = keys.get(nearest);
-            int cmp = comparator.compare(found, key);
-            if (cmp == 0) {
-                keys.set(nearest, key);
-                values.set(nearest, value);
-            } else if (cmp < 0) {
-                // found is lower
-                keys.add(nearest + 1, key);
-                values.add(nearest + 1, value);
-            } else {
-                keys.add(nearest, key);
-                values.add(nearest, value);
+            if (pos > keys.size()) {
+                pos -= 1;
             }
-        }
-
-        @Override
-        public Pair<V> get(K key) {
-            int pos = findPosition(key);
-            return pos < 0 ? null : values.get(pos);
-        }
-
-        public List<Pair<V>> getValues() {
-            return values;
-        }
-
-        @Override
-        public Node<K, Pair<V>>[] split() {
-            int mid = keys.size() - 1 >>> 1;
-            Leaf<K, V> left = new Leaf<>(comparator);
-            left.keys = keys.subList(0, mid);
-            left.values = values.subList(0, mid);
-            Leaf<K, V> right = new Leaf<>(comparator);
-            right.keys = keys.subList(mid + 1, keys.size());
-            right.values = values.subList(mid + 1, values.size());
-
-            return new Node[] { left, right };
-        }
-    }
-
-    private static class Pair<V> {
-        public V value;
-        public boolean deleted;
-
-        public Pair(V value, boolean deleted) {
-            this.value = value;
-            this.deleted = deleted;
-        }
-
-        public V getValue() {
-            return value;
-        }
-
-        public void setValue(V value) {
-            this.value = value;
-        }
-
-        public boolean isDeleted() {
-            return deleted;
-        }
-
-        public void setDeleted(boolean deleted) {
-            this.deleted = deleted;
+            return new Node[]{getChildren().get(pos), getChildren().get(pos + 1)};
         }
     }
 
@@ -262,7 +215,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final boolean toInclusive, excludeDeleted;
         private final Comparator<K> comparator;
         // Iteration...
-        private final Stack<Branch<K>> stack = new Stack<>();
+        private final Stack<MutableBranch<K>> stack = new Stack<>();
         private final Stack<AtomicInteger> stackPos = new Stack<>();
         private final AtomicInteger leafPos = new AtomicInteger();
         private Leaf<K, V> leaf;
@@ -287,12 +240,12 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 int pos = leaf.findNearest(from);
                 K k = leaf.getKeys().get(pos);
                 int comp = comparator.compare((K) from, k);
-                if (comp > 0) {
+                if (comp < 0) {
                     leafPos.set(pos);
                 } else if (comp == 0) {
                     leafPos.set(fromInclusive ? pos : pos + 1);
-                } else if (comp < 0) {
-                    leafPos.set(pos);
+                } else {
+                    leafPos.set(pos + 1);
                 }
             }
         }
@@ -302,6 +255,9 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             if (leaf == null) {
                 return false;
             }
+            if (leafPos.get() >= leaf.getValues().size()) {
+                advance();
+            }
             while (leaf != null && excludeDeleted) {
                 Pair<V> value = leaf.getValues().get(leafPos.get());
                 if (!value.isDeleted()) {
@@ -309,9 +265,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
                 advance();
             }
-            if (leafPos.get() >= leaf.getValues().size()) {
-                advance();
-            } else if (to != null) {
+            if (to != null) {
                 int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
                 if (comp > 0 || (comp == 0 && !toInclusive)) {
                     leaf = null;
@@ -346,10 +300,10 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         @SuppressWarnings("unchecked")
         private void pointToStart() {
             Node<K, ?> node = root;
-            while (Branch.class.isAssignableFrom(node.getClass())) {
-                stack.push((Branch<K>) node);
+            while (MutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((MutableBranch<K>) node);
                 stackPos.push(new AtomicInteger(1));
-                node = ((Branch<K>) node).getChildren().get(0);
+                node = ((MutableBranch<K>) node).getChildren().get(0);
             }
             leaf = (Leaf<K, V>) node;
         }
@@ -357,29 +311,40 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         @SuppressWarnings("unchecked")
         private void findLeaf(K key) {
             Node<K, ?> node = root;
-            while (Branch.class.isAssignableFrom(node.getClass())) {
-                stack.push((Branch<K>) node);
+            while (MutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((MutableBranch<K>) node);
                 int pos = (node).findNearest(key);
                 stackPos.push(new AtomicInteger(pos + 1));
-                node = ((Branch<K>) node).getChildren().get(pos);
+                K found = node.getKeys().get(pos);
+                // If key is higher than found, then we shift right, otherwise we shift left
+                if (comparator.compare(key, found) >= 0) {
+                    node = ((MutableBranch<K>) node).getChildren().get(pos + 1);
+                    // Increment the stack position, if we lean right. This is to ensure that we don't repeat.
+                    stackPos.peek().getAndIncrement();
+                } else {
+                    node = ((MutableBranch<K>) node).getChildren().get(pos);
+                }
             }
             leaf = (Leaf<K, V>) node;
         }
 
         @SuppressWarnings("unchecked")
         private void advance() {
+            // If the leaf position is still less than the size of the leaf, then we don't advance.
+            // If the leaf position is greater than or equal to the size of the leaf, then we advance to the next leaf.
             if (leaf != null && leafPos.get() < leaf.getValues().size()) {
                 return; // nothing to see here
             }
 
+            // Reset the leaf to zero...
             leaf = null;
             leafPos.set(-1); // reset to 0
 
             if (stack.isEmpty()) {
-                return; // nothing to see here
+                return; // we have nothing left!
             }
 
-            Branch<K> parent = stack.peek(); // get the immediate parent
+            MutableBranch<K> parent = stack.peek(); // get the immediate parent
 
             int pos = stackPos.peek().getAndIncrement(); // get the immediate parent position.
             if (pos < parent.getChildren().size()) {
@@ -388,7 +353,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     leaf = (Leaf<K, V>) child;
                     leafPos.set(0);
                 } else {
-                    stack.push((Branch<K>) child);
+                    stack.push((MutableBranch<K>) child);
                     stackPos.push(new AtomicInteger(0));
                     advance();
                     return;
@@ -416,7 +381,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final boolean toInclusive, excludeDeleted;
         private final Comparator<K> comparator;
         // Iteration...
-        private final Stack<Branch<K>> stack = new Stack<>();
+        private final Stack<MutableBranch<K>> stack = new Stack<>();
         private final Stack<AtomicInteger> stackPos = new Stack<>();
         private final AtomicInteger leafPos = new AtomicInteger();
         private Leaf<K, V> leaf;
@@ -441,12 +406,10 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 int pos = leaf.findNearest(from);
                 K k = leaf.getKeys().get(pos);
                 int comp = comparator.compare((K) from, k);
-                if (comp > 0) {
+                if (comp != 0) {
                     leafPos.set(pos);
                 } else if (comp == 0) {
                     leafPos.set(fromInclusive ? pos : pos - 1);
-                } else if (comp < 0) {
-                    leafPos.set(pos);
                 }
             }
         }
@@ -463,7 +426,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
                 advance();
             }
-            if (leafPos.get() >= 0) {
+            if (leafPos.get() < 0) {
                 advance();
             } else if (to != null) {
                 int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
@@ -492,24 +455,34 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         @SuppressWarnings("unchecked")
         private void pointToStart() {
             Node<K, ?> node = root;
-            while (Branch.class.isAssignableFrom(node.getClass())) {
-                stack.push((Branch<K>) node);
-                stackPos.push(new AtomicInteger(((Branch<K>) node).getChildren().size() - 2));
-                node = ((Branch<K>) node).getChildren().get(((Branch<K>) node).getChildren().size() - 1);
+            while (MutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((MutableBranch<K>) node);
+                stackPos.push(new AtomicInteger(((MutableBranch<K>) node).getChildren().size() - 2));
+                node = ((MutableBranch<K>) node).getChildren().get(((MutableBranch<K>) node).getChildren().size() - 1);
             }
             leaf = (Leaf<K, V>) node;
+            leafPos.set(leaf.getKeys().size() - 1);
         }
 
         @SuppressWarnings("unchecked")
         private void findLeaf(K key) {
             Node<K, ?> node = root;
-            while (Branch.class.isAssignableFrom(node.getClass())) {
-                stack.push((Branch<K>) node);
+            while (MutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((MutableBranch<K>) node);
                 int pos = (node).findNearest(key);
                 stackPos.push(new AtomicInteger(pos - 1));
-                node = ((Branch<K>) node).getChildren().get(pos);
+                K found = node.getKeys().get(pos);
+                // If key is higher than found, then we shift right, otherwise we shift left
+                if (comparator.compare(key, found) >= 0) {
+                    node = ((MutableBranch<K>) node).getChildren().get(pos);
+                } else {
+                    node = ((MutableBranch<K>) node).getChildren().get(pos - 1);
+                    // Increment the stack position, if we lean right. This is to ensure that we don't repeat.
+                    stackPos.peek().getAndDecrement();
+                }
             }
             leaf = (Leaf<K, V>) node;
+            leafPos.set(leaf.getKeys().size() - 1);
         }
 
         @SuppressWarnings("unchecked")
@@ -525,17 +498,17 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 return; // nothing to see here
             }
 
-            Branch<K> parent = stack.peek(); // get the immediate parent
+            MutableBranch<K> parent = stack.peek(); // get the immediate parent
 
             int pos = stackPos.peek().getAndDecrement(); // get the immediate parent position.
             if (pos >= 0) {
                 Node<K, ?> child = parent.getChildren().get(pos);
                 if (Leaf.class.isAssignableFrom(child.getClass())) {
                     leaf = (Leaf<K, V>) child;
-                    leafPos.set(0);
+                    leafPos.set(leaf.getKeys().size() - 1);
                 } else {
-                    stack.push((Branch<K>) child);
-                    stackPos.push(new AtomicInteger(((Branch<K>) child).getChildren().size()));
+                    stack.push((MutableBranch<K>) child);
+                    stackPos.push(new AtomicInteger(((MutableBranch<K>) child).getChildren().size() - 1));
                     advance();
                     return;
                 }

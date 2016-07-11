@@ -16,7 +16,6 @@ import java.util.*;
 /**
  * Created by ian on 25/05/2016.
  */
-@Deprecated
 public class ObjectSerializer implements Serializer {
 
     private static final byte NULL = 'N';
@@ -38,7 +37,6 @@ public class ObjectSerializer implements Serializer {
 
     @Override
     public void serialize(DataOutput out, Object value) throws IOException {
-        out.writeUTF(getKey());
         writeValue(out, value);
     }
 
@@ -142,10 +140,6 @@ public class ObjectSerializer implements Serializer {
 
     @Override
     public Object deserialize(DataInput in) throws IOException {
-        String type = in.readUTF();
-        if (!type.equalsIgnoreCase(getKey())) {
-            throw new IOException("Invalid LZ4 data stream.");
-        }
         return readValue(in);
     }
 

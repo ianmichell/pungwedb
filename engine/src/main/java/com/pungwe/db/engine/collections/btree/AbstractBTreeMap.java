@@ -1,4 +1,17 @@
-package com.pungwe.db.engine.collections;
+/*
+ * Copyright (C) 2016 Ian Michell.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the
+ * License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.pungwe.db.engine.collections.btree;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -321,6 +334,8 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     protected abstract Iterator<Entry<K,V>> reverseIterator(K fromKey, boolean fromInclusive, K toKey,
                                                                   boolean toInclusive);
 
+    protected abstract Node<K,?> rootNode();
+
     public static class BTreeEntry<K,V> implements Entry<K,V> {
 
         private K key;
@@ -368,6 +383,11 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             this.high = high;
             this.lowInclusive = lowInclusive;
             this.highInclusive = highInclusive;
+        }
+
+        @Override
+        protected Node<K, ?> rootNode() {
+            return parent.rootNode();
         }
 
         private boolean inBounds(K key) {
@@ -461,6 +481,12 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
 
         @Override
+        public ConcurrentNavigableMap<K, V> descendingMap() {
+            return new DescendingMap<>(this, (o1, o2) -> -comparator.compare(o1, o2), high, highInclusive,
+                    low, lowInclusive);
+        }
+
+        @Override
         public ConcurrentNavigableMap<K, V> subMap(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
             if ((fromKey != null && !inBounds(fromKey)) && (toKey != null && !inBounds(toKey))) {
                 return null;
@@ -471,6 +497,16 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         @Override
         public void clear() {
             // FIXME: We should be able to clear a range...
+        }
+
+        @Override
+        public Iterator<Entry<K,V>> iterator() {
+            return iterator(this.low, this.lowInclusive, this.high, this.highInclusive);
+        }
+
+        @Override
+        public Iterator<Entry<K,V>> reverseIterator() {
+            return reverseIterator(this.high, this.highInclusive, this.low, this.lowInclusive);
         }
 
         @Override
@@ -947,5 +983,104 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         public abstract T get(K key);
 
         public abstract Node<K, T>[] split();
+    }
+
+    protected static abstract class Branch<K, T> extends Node<K, T[]> {
+
+        private final List<T> children;
+
+        public Branch(Comparator<K> comparator, List<T> children) {
+            super(comparator);
+            this.children = children;
+        }
+
+        protected List<T> getChildren() {
+            return this.children;
+        }
+    }
+
+    protected static class Leaf<K, V> extends Node<K, Pair<V>> {
+
+        private List<Pair<V>> values = new ArrayList<>();
+
+        public Leaf(Comparator<K> comparator) {
+            super(comparator);
+        }
+
+        @Override
+        public void put(K key, Pair<V> value) {
+            if (keys.size() == 0) {
+                keys.add(key);
+                values.add(value);
+                return;
+            }
+            int nearest = findNearest(key);
+            K found = keys.get(nearest);
+            int cmp = comparator.compare(found, key);
+            if (cmp == 0) {
+                keys.set(nearest, key);
+                values.set(nearest, value);
+            } else if (cmp < 0) {
+                // found is lower
+                keys.add(nearest + 1, key);
+                values.add(nearest + 1, value);
+            } else {
+                keys.add(nearest, key);
+                values.add(nearest, value);
+            }
+        }
+
+        @Override
+        public Pair<V> get(K key) {
+            int pos = findPosition(key);
+            return pos < 0 ? null : values.get(pos);
+        }
+
+        public List<Pair<V>> getValues() {
+            return values;
+        }
+
+        @Override
+        public Node<K, Pair<V>>[] split() {
+            int mid = keys.size() - 1 >>> 1;
+            Leaf<K, V> left = new Leaf<>(comparator);
+            left.keys = new ArrayList<>();
+            left.keys.addAll(keys.subList(0, mid));
+            left.values = new ArrayList<>();
+            left.values.addAll(values.subList(0, mid));
+            Leaf<K, V> right = new Leaf<>(comparator);
+            right.keys = new ArrayList<>();
+            right.keys.addAll(keys.subList(mid, keys.size()));
+            right.values = new ArrayList<>();
+            right.values.addAll(values.subList(mid, values.size()));
+
+            return new Node[] { left, right };
+        }
+    }
+
+    protected static class Pair<V> {
+        public V value;
+        public boolean deleted;
+
+        public Pair(V value, boolean deleted) {
+            this.value = value;
+            this.deleted = deleted;
+        }
+
+        public V getValue() {
+            return value;
+        }
+
+        public void setValue(V value) {
+            this.value = value;
+        }
+
+        public boolean isDeleted() {
+            return deleted;
+        }
+
+        public void setDeleted(boolean deleted) {
+            this.deleted = deleted;
+        }
     }
 }
