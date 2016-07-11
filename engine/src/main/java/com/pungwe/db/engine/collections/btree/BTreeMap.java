@@ -59,8 +59,13 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             stack.push(node);
         }
         Leaf<K, V> leaf = (Leaf<K, V>) node;
+        boolean newValue = true;
+        if (leaf.findPosition(entry.getKey()) >= 0) {
+            newValue = false;
+        }
         leaf.put(entry.getKey(), new Pair<V>(entry.getValue(), false));
         checkAndSplit(stack);
+        size.getAndIncrement();
         return new BTreeEntry<>(entry.getKey(), entry.getValue(), false);
     }
 

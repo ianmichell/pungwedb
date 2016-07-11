@@ -29,6 +29,12 @@ public class NumberSerializer<T extends Number> implements Serializer<T> {
     private static final byte DECIMAL = 'd';
     private static final byte BIG_DECIMAL = 'D';
 
+    private final Class<T> type;
+
+    public NumberSerializer(Class<T> type) {
+        this.type = type;
+    }
+
     @Override
     public void serialize(DataOutput out, T value) throws IOException {
         if (Double.class.isAssignableFrom(value.getClass())) {
@@ -45,39 +51,65 @@ public class NumberSerializer<T extends Number> implements Serializer<T> {
         } else if (BigInteger.class.isAssignableFrom(value.getClass())) {
             out.writeByte(BIG_NUMBER);
             out.writeUTF(value.toString());
-        } else if (Number.class.isAssignableFrom(value.getClass())) {
+        } else {
             out.writeByte(NUMBER);
             out.writeLong(value.longValue());
         }
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public T deserialize(DataInput in) throws IOException {
+        Number readValue = readValue(in);
+        if (readValue == null) {
+            return null;
+        }
+        if (Double.class.isAssignableFrom(type)) {
+            return (T)new Double(readValue.doubleValue());
+        } else if (Float.class.isAssignableFrom(type)) {
+            return (T) new Float(readValue.floatValue());
+        } else if (BigDecimal.class.isAssignableFrom(type)) {
+            return (T)(BigDecimal.class.isAssignableFrom(readValue.getClass()) ? (BigDecimal)readValue :
+                BigDecimal.valueOf(readValue.doubleValue()));
+        } else if (Integer.class.isAssignableFrom(type)) {
+            return (T)new Integer(readValue.intValue());
+        } else if (BigInteger.class.isAssignableFrom(type)) {
+            return (T)(BigInteger.class.isAssignableFrom(readValue.getClass()) ? (BigInteger)readValue :
+                    BigInteger.valueOf(readValue.longValue()));
+        } else if (Long.class.isAssignableFrom(type)) {
+            return (T)new Long(readValue.longValue());
+        }
+        // Try cast to T...
+        return (T)readValue;
+    }
+
+    private Number readValue(DataInput in) throws IOException {
         byte type = in.readByte();
         switch (type) {
             case NUMBER: {
-                return (T)new Long(in.readLong()); // return the long number
+                return new Long(in.readLong()); // return the long number
             }
             // FIXME: We can probably store more information about this...
             case BIG_NUMBER: {
                 String value = in.readUTF();
                 BigInteger bigInt = new BigInteger(value);
-                return (T)bigInt;
+                return bigInt;
             }
             case DECIMAL: {
-                return (T)new Double(in.readDouble());
+                return new Double(in.readDouble());
             }
             // FIXME: We can probably store more information about this...
             case BIG_DECIMAL: {
                 String value = in.readUTF();
                 BigDecimal bigDecimal = new BigDecimal(value);
-                return (T)bigDecimal;
+                return bigDecimal;
             }
         }
+        return null;
     }
 
     @Override
     public String getKey() {
-        return "NUMBER";
+        return type.getSimpleName();
     }
 }

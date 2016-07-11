@@ -1007,6 +1007,13 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             super(comparator);
         }
 
+        public Leaf(Comparator<K> comparator, List<K> keys, List<Pair<V>> values) {
+            super(comparator);
+            this.keys.addAll(keys);
+            this.values = new ArrayList<>();
+            this.values.addAll(values);
+        }
+
         @Override
         public void put(K key, Pair<V> value) {
             if (keys.size() == 0) {

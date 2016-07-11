@@ -13,6 +13,7 @@
  */
 package com.pungwe.db.engine.collections.btree;
 
+import com.pungwe.db.core.io.serializers.NumberSerializer;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.BasicRecordFile;
@@ -21,6 +22,8 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -33,7 +36,7 @@ public class ImmutableBTreeMapTest {
     @Test
     public void writeAndLoad() throws IOException {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 100);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -44,16 +47,84 @@ public class ImmutableBTreeMapTest {
         File tmp = File.createTempFile("immutable", ".db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
-                    ImmutableBTree.serializer(new ObjectSerializer(), new ObjectSerializer()));
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
             start = System.nanoTime();
             ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
+            System.out.println("File Size in MB: " + ((double)tmp.length() / 1024d / 1024d));
             // Ensure we have every record
             for (long i = 0; i < 10000; i++) {
                 assertEquals(new Long(i), immutableMap.get(i));
             }
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testIterateBackwards() throws Exception {
+        // Add a million records to map
+        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 100);
+        long start = System.nanoTime();
+        for (long i = 0; i < 10000; i++) {
+            assertNotNull(map.put(i, i));
+        }
+        long end = System.nanoTime();
+        System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+            System.out.println("File Size in MB: " + ((double)tmp.length() / 1024d / 1024d));
+            // Ensure we have every record
+            AtomicLong counter = new AtomicLong(9999);
+            for (Map.Entry<Long, Long> entry : immutableMap.descendingMap().entrySet()) {
+                assertEquals(new Long(counter.getAndDecrement()), entry.getKey());
+            }
+            assertEquals(-1, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testIterate() throws Exception {
+        // Add a million records to map
+        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 100);
+        long start = System.nanoTime();
+        for (long i = 0; i < 10000; i++) {
+            assertNotNull(map.put(i, i));
+        }
+        long end = System.nanoTime();
+        System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+            System.out.println("File Size in MB: " + ((double)tmp.length() / 1024d / 1024d));
+            // Ensure we have every record
+            AtomicLong counter = new AtomicLong(0);
+            for (Map.Entry<Long, Long> entry : immutableMap.entrySet()) {
+                assertEquals(new Long(counter.getAndIncrement()), entry.getKey());
+            }
+            assertEquals(10000l, counter.get());
         } finally {
             tmp.delete();
         }

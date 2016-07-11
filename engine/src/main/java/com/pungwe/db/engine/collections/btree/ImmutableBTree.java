@@ -21,6 +21,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by ian on 09/07/2016.
@@ -37,8 +38,9 @@ public class ImmutableBTree<K,V> extends AbstractBTreeMap<K,V> {
         this.rootNode = findRootNode();
     }
 
-    public static <K, V> Serializer<Node<K, ?>> serializer(Serializer<K> keySerializer, Serializer<V> valueSerializer) {
-        return null;
+    public static <K, V> Serializer<Node<K, ?>> serializer(Comparator<K> comparator, Serializer<K> keySerializer,
+                                                           Serializer<V> valueSerializer) {
+        return new ImmutableNodeSerializer<>(comparator, keySerializer, valueSerializer);
     }
 
     public static <K,V> ImmutableBTree<K,V> write(RecordFile<Node<K, ?>> recordFile, String treeName,
@@ -119,12 +121,21 @@ public class ImmutableBTree<K,V> extends AbstractBTreeMap<K,V> {
 
     @Override
     protected Iterator<Entry<K, V>> iterator(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
-        return null;
+        try {
+            return new ImmutableBTreeMapIterator(comparator, fromKey, fromInclusive, toKey, toInclusive);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     @Override
     protected Iterator<Entry<K, V>> reverseIterator(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
-        return null;
+        try {
+            return new ReverseImmutableBTreeMapIterator((o1, o2) -> -comparator.compare(o1, o2), fromKey, fromInclusive,
+                    toKey, toInclusive);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     @Override
@@ -206,7 +217,7 @@ public class ImmutableBTree<K,V> extends AbstractBTreeMap<K,V> {
             metaData.put("size", btreeToWrite.sizeLong());
             recordFile.setMetaData(metaData);
             // Sync the record to disk
-            writer.sync();
+            writer.commit();
             // Once the root node is written, then return a new instance of the ImmutableBTree
             return new ImmutableBTree<>((Comparator<K>)btreeToWrite.comparator(), recordFile);
         }
@@ -243,27 +254,406 @@ public class ImmutableBTree<K,V> extends AbstractBTreeMap<K,V> {
 
     private static class ImmutableNodeSerializer<K, V> implements Serializer<Node<K, ?>> {
 
+        private final Comparator<K> comparator;
         private final Serializer<K> keySerializer;
         private final Serializer<V> valueSerializer;
 
-        public ImmutableNodeSerializer(Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+        public ImmutableNodeSerializer(Comparator<K> comparator, Serializer<K> keySerializer,
+                                       Serializer<V> valueSerializer) {
+            this.comparator = comparator;
             this.keySerializer = keySerializer;
             this.valueSerializer = valueSerializer;
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public void serialize(DataOutput out, Node<K, ?> value) throws IOException {
-
+            // Is this a branch?
+            out.writeBoolean(Branch.class.isAssignableFrom(value.getClass()));
+            // Write the number of keys...
+            out.writeInt(value.getKeys().size());
+            for (K key : value.getKeys()) {
+                out.writeByte('E');
+                keySerializer.serialize(out, key);
+            }
+            if (Branch.class.isAssignableFrom(value.getClass())) {
+                out.writeInt(((Branch<K, Long>)value).getChildren().size());
+                for (Long child : ((Branch<K, Long>)value).getChildren()) {
+                    out.writeByte('E');
+                    out.writeLong(child);
+                }
+            } else {
+                out.writeInt(value.getKeys().size());
+                for (Pair<V> v :  ((Leaf<K,V>)value).getValues()) {
+                    out.writeByte('E');
+                    out.writeBoolean(v.isDeleted());
+                    valueSerializer.serialize(out, v.getValue());
+                }
+            }
         }
 
         @Override
         public Node<K, ?> deserialize(DataInput in) throws IOException {
-            return null;
+            boolean branch = in.readBoolean();
+            int keySize = in.readInt();
+            List<K> keys = new ArrayList<>(keySize);
+            for (int i = 0; i < keySize; i++) {
+                assert in.readByte() == 'E'; // E for entry
+                K key = keySerializer.deserialize(in);
+                keys.add(key);
+            }
+            int valueSize = in.readInt();
+            if (branch) {
+                List<Long> children = new ArrayList<>(valueSize);
+                for (int i = 0; i < valueSize; i++) {
+                    assert in.readByte() == 'E';
+                    Long child = in.readLong();
+                    children.add(child);
+                }
+                return new ImmutableBranch<K>(comparator, keys, children);
+            }
+            List<Pair<V>> values = new ArrayList<>(valueSize);
+            for (int i = 0; i < valueSize; i++) {
+                assert in.readByte() == 'E';
+                boolean deleted = in.readBoolean();
+                V value = valueSerializer.deserialize(in);
+                values.add(new Pair<>(value, deleted));
+            }
+            return new Leaf<>(comparator, keys, values);
         }
 
         @Override
         public String getKey() {
             return "IMMUTABLE_BTREE";
+        }
+    }
+
+    private class ImmutableBTreeMapIterator implements Iterator<Entry<K, V>> {
+
+        private final K to;
+        private final boolean toInclusive, excludeDeleted;
+        private final Comparator<K> comparator;
+        // Iteration...
+        private final Stack<ImmutableBranch<K>> stack = new Stack<>();
+        private final Stack<AtomicInteger> stackPos = new Stack<>();
+        private final AtomicInteger leafPos = new AtomicInteger();
+        private Leaf<K, V> leaf;
+        private Pair<V> last;
+
+        private ImmutableBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to, boolean toInclusive) throws IOException {
+            this(comparator, from, fromInclusive, to, toInclusive, true);
+        }
+
+        private ImmutableBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to, boolean toInclusive,
+                                 boolean excludeDeleted) throws IOException {
+            this.to = to;
+            this.toInclusive = toInclusive;
+            this.comparator = comparator;
+            this.excludeDeleted = excludeDeleted;
+
+            if (from == null) {
+                pointToStart();
+            } else {
+                // Find the starting point
+                findLeaf(from);
+                int pos = leaf.findNearest(from);
+                K k = leaf.getKeys().get(pos);
+                int comp = comparator.compare((K) from, k);
+                if (comp < 0) {
+                    leafPos.set(pos);
+                } else if (comp == 0) {
+                    leafPos.set(fromInclusive ? pos : pos + 1);
+                } else {
+                    leafPos.set(pos + 1);
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            try {
+                if (leaf == null) {
+                    return false;
+                }
+                if (leafPos.get() >= leaf.getValues().size()) {
+                    advance();
+                }
+                while (leaf != null && excludeDeleted) {
+                    Pair<V> value = leaf.getValues().get(leafPos.get());
+                    if (!value.isDeleted()) {
+                        break; // break out.
+                    }
+                    advance();
+                }
+                if (to != null) {
+                    int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                    if (comp > 0 || (comp == 0 && !toInclusive)) {
+                        leaf = null;
+                        leafPos.set(-1);
+                        stack.clear();
+                        stackPos.clear();
+                    }
+                }
+                return leaf != null;
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Entry<K, V> next() {
+            if (!hasNext()) {
+                return null;
+            }
+            K key = leaf.getKeys().get(leafPos.get());
+            Pair<V> child = leaf.getValues().get(leafPos.getAndIncrement());
+            try {
+                advance();
+            } catch (IOException ex) {
+                // FIXME: Stop using runtime exceptions
+                throw new RuntimeException(ex);
+            }
+            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
+        }
+
+        @SuppressWarnings("unchecked")
+        private void pointToStart() throws IOException {
+            Node<K, ?> node = rootNode;
+            while (ImmutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((ImmutableBranch<K>) node);
+                stackPos.push(new AtomicInteger(1));
+                node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(0));
+            }
+            leaf = (Leaf<K, V>) node;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void findLeaf(K key) throws IOException {
+            Node<K, ?> node = rootNode;
+            while (ImmutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((ImmutableBranch<K>) node);
+                int pos = (node).findNearest(key);
+                stackPos.push(new AtomicInteger(pos + 1));
+                K found = node.getKeys().get(pos);
+                // If key is higher than found, then we shift right, otherwise we shift left
+                if (comparator.compare(key, found) >= 0) {
+                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos + 1));
+                    // Increment the stack position, if we lean right. This is to ensure that we don't repeat.
+                    stackPos.peek().getAndIncrement();
+                } else {
+                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos));
+                }
+            }
+            leaf = (Leaf<K, V>) node;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void advance() throws IOException {
+            // If the leaf position is still less than the size of the leaf, then we don't advance.
+            // If the leaf position is greater than or equal to the size of the leaf, then we advance to the next leaf.
+            if (leaf != null && leafPos.get() < leaf.getValues().size()) {
+                return; // nothing to see here
+            }
+
+            // Reset the leaf to zero...
+            leaf = null;
+            leafPos.set(-1); // reset to 0
+
+            if (stack.isEmpty()) {
+                return; // we have nothing left!
+            }
+
+            ImmutableBranch<K> parent = stack.peek(); // get the immediate parent
+
+            int pos = stackPos.peek().getAndIncrement(); // get the immediate parent position.
+            if (pos < parent.getChildren().size()) {
+                Node<K, ?> child = recordFile.get(parent.getChildren().get(pos));
+                if (Leaf.class.isAssignableFrom(child.getClass())) {
+                    leaf = (Leaf<K, V>) child;
+                    leafPos.set(0);
+                } else {
+                    stack.push((ImmutableBranch<K>) child);
+                    stackPos.push(new AtomicInteger(0));
+                    advance();
+                    return;
+                }
+            } else {
+                stack.pop(); // remove last node
+                stackPos.pop();
+                advance();
+                return;
+            }
+
+            if (to != null && leaf != null) {
+                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                if (comp > 0 || (comp == 0 && !toInclusive)) {
+                    leaf = null;
+                    leafPos.set(-1);
+                }
+            }
+        }
+    }
+
+    private class ReverseImmutableBTreeMapIterator implements Iterator<Entry<K, V>> {
+
+        private final K to;
+        private final boolean toInclusive, excludeDeleted;
+        private final Comparator<K> comparator;
+        // Iteration...
+        private final Stack<ImmutableBranch<K>> stack = new Stack<>();
+        private final Stack<AtomicInteger> stackPos = new Stack<>();
+        private final AtomicInteger leafPos = new AtomicInteger();
+        private Leaf<K, V> leaf;
+
+        private ReverseImmutableBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to,
+                                        boolean toInclusive) throws IOException {
+            this(comparator, from, fromInclusive, to, toInclusive, true);
+        }
+
+        private ReverseImmutableBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to,
+                                        boolean toInclusive, boolean excludeDeleted) throws IOException {
+            this.to = to;
+            this.toInclusive = toInclusive;
+            this.comparator = comparator;
+            this.excludeDeleted = excludeDeleted;
+
+            if (from == null) {
+                pointToStart();
+            } else {
+                // Find the starting point
+                findLeaf(from);
+                int pos = leaf.findNearest(from);
+                K k = leaf.getKeys().get(pos);
+                int comp = comparator.compare((K) from, k);
+                if (comp != 0) {
+                    leafPos.set(pos);
+                } else if (comp == 0) {
+                    leafPos.set(fromInclusive ? pos : pos - 1);
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            try {
+                if (leaf == null) {
+                    return false;
+                }
+                while (leaf != null && excludeDeleted) {
+                    Pair<V> value = leaf.getValues().get(leafPos.get());
+                    if (!value.isDeleted()) {
+                        break; // break out.
+                    }
+                    advance();
+                }
+                if (leafPos.get() < 0) {
+                    advance();
+                } else if (to != null) {
+                    int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                    if (comp > 0 || (comp == 0 && !toInclusive)) {
+                        leaf = null;
+                        leafPos.set(-1);
+                        stack.clear();
+                        stackPos.clear();
+                    }
+                }
+                return leaf != null;
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Entry<K, V> next() {
+            if (!hasNext()) {
+                return null;
+            }
+            K key = leaf.getKeys().get(leafPos.get());
+            Pair<V> child = leaf.getValues().get(leafPos.getAndDecrement());
+            try {
+                advance();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
+        }
+
+        @SuppressWarnings("unchecked")
+        private void pointToStart() throws IOException {
+            Node<K, ?> node = rootNode;
+            while (ImmutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((ImmutableBranch<K>) node);
+                stackPos.push(new AtomicInteger(((ImmutableBranch<K>) node).getChildren().size() - 2));
+                node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(((ImmutableBranch<K>) node).getChildren().size() - 1));
+            }
+            leaf = (Leaf<K, V>) node;
+            leafPos.set(leaf.getKeys().size() - 1);
+        }
+
+        @SuppressWarnings("unchecked")
+        private void findLeaf(K key) throws IOException {
+            Node<K, ?> node = rootNode;
+            while (ImmutableBranch.class.isAssignableFrom(node.getClass())) {
+                stack.push((ImmutableBranch<K>) node);
+                int pos = (node).findNearest(key);
+                stackPos.push(new AtomicInteger(pos - 1));
+                K found = node.getKeys().get(pos);
+                // If key is higher than found, then we shift right, otherwise we shift left
+                if (comparator.compare(key, found) >= 0) {
+                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos));
+                } else {
+                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos - 1));
+                    // Increment the stack position, if we lean right. This is to ensure that we don't repeat.
+                    stackPos.peek().getAndDecrement();
+                }
+            }
+            leaf = (Leaf<K, V>) node;
+            leafPos.set(leaf.getKeys().size() - 1);
+        }
+
+        @SuppressWarnings("unchecked")
+        private void advance() throws IOException {
+            if (leaf != null && leafPos.get() >= 0) {
+                return; // nothing to see here
+            }
+
+            leaf = null;
+            leafPos.set(-1); // reset to 0
+
+            if (stack.isEmpty()) {
+                return; // nothing to see here
+            }
+
+            ImmutableBranch<K> parent = stack.peek(); // get the immediate parent
+
+            int pos = stackPos.peek().getAndDecrement(); // get the immediate parent position.
+            if (pos >= 0) {
+                Node<K, ?> child = recordFile.get(parent.getChildren().get(pos));
+                if (Leaf.class.isAssignableFrom(child.getClass())) {
+                    leaf = (Leaf<K, V>) child;
+                    leafPos.set(leaf.getKeys().size() - 1);
+                } else {
+                    stack.push((ImmutableBranch<K>) child);
+                    stackPos.push(new AtomicInteger(((ImmutableBranch<K>) child).getChildren().size() - 1));
+                    advance();
+                    return;
+                }
+            } else {
+                stack.pop(); // remove last node
+                stackPos.pop();
+                advance();
+                return;
+            }
+
+            if (to != null && leaf != null) {
+                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                if (comp > 0 || (comp == 0 && !toInclusive)) {
+                    leaf = null;
+                    leafPos.set(-1);
+                }
+            }
         }
     }
 }
