@@ -16,12 +16,14 @@ package com.pungwe.db.engine.collections.btree;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Created by ian on 07/07/2016.
  */
 public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
+    protected final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     protected final int maxKeysPerNode;
     protected final AtomicLong size = new AtomicLong();
     protected Node<K, ?> root;
@@ -43,30 +45,35 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         if (entry == null || entry.getKey() == null) {
             return null;
         }
-        Stack<Node<K, ?>> stack = new Stack<>();
-        Node<K, ?> node = root;
-        stack.push(node);
-        while (MutableBranch.class.isAssignableFrom(node.getClass())) {
-            int pos = node.findNearest(entry.getKey());
-            K found = node.getKeys().get(pos);
-            Node[] children = ((MutableBranch<K>) node).get(found);
-            if (comparator.compare(found, entry.getKey()) <= 0) {
-                // Swing to the right
-                node = children[1];
-            } else {
-                node = children[0];
-            }
+        lock.writeLock().lock();
+        try {
+            Stack<Node<K, ?>> stack = new Stack<>();
+            Node<K, ?> node = root;
             stack.push(node);
+            while (MutableBranch.class.isAssignableFrom(node.getClass())) {
+                int pos = node.findNearest(entry.getKey());
+                K found = node.getKeys().get(pos);
+                Node[] children = ((MutableBranch<K>) node).get(found);
+                if (comparator.compare(found, entry.getKey()) <= 0) {
+                    // Swing to the right
+                    node = children[1];
+                } else {
+                    node = children[0];
+                }
+                stack.push(node);
+            }
+            Leaf<K, V> leaf = (Leaf<K, V>) node;
+            boolean newValue = true;
+            if (leaf.findPosition(entry.getKey()) >= 0) {
+                newValue = false;
+            }
+            leaf.put(entry.getKey(), new Pair<V>(entry.getValue(), false));
+            checkAndSplit(stack);
+            size.getAndIncrement();
+            return new BTreeEntry<>(entry.getKey(), entry.getValue(), false);
+        } finally {
+            lock.writeLock().unlock();
         }
-        Leaf<K, V> leaf = (Leaf<K, V>) node;
-        boolean newValue = true;
-        if (leaf.findPosition(entry.getKey()) >= 0) {
-            newValue = false;
-        }
-        leaf.put(entry.getKey(), new Pair<V>(entry.getValue(), false));
-        checkAndSplit(stack);
-        size.getAndIncrement();
-        return new BTreeEntry<>(entry.getKey(), entry.getValue(), false);
     }
 
     @SuppressWarnings("unchecked")
@@ -100,21 +107,31 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
     @Override
     protected BTreeEntry<K, V> getEntry(K key) {
-        Leaf leaf = findLeafForGet(key);
-        Pair<V> value = leaf == null ? null : leaf.get(key);
-        return value == null || value.isDeleted() ? null : new BTreeEntry<K, V>(key, value.getValue(), false);
+        lock.readLock().lock();
+        try {
+            Leaf leaf = findLeafForGet(key);
+            Pair<V> value = leaf == null ? null : leaf.get(key);
+            return value == null || value.isDeleted() ? null : new BTreeEntry<K, V>(key, value.getValue(), false);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     @Override
     protected V removeEntry(K key) {
-        Leaf leaf = findLeafForGet(key);
-        Pair<V> pair = leaf.get(key);
-        if (pair == null) {
-            return null;
+        lock.writeLock().lock();
+        try {
+            Leaf leaf = findLeafForGet(key);
+            Pair<V> pair = leaf.get(key);
+            if (pair == null) {
+                return null;
+            }
+            pair.setDeleted(true);
+            size.decrementAndGet();
+            return pair.getValue();
+        } finally {
+            lock.writeLock().unlock();
         }
-        pair.setDeleted(true);
-        size.decrementAndGet();
-        return pair.getValue();
     }
 
     @Override
@@ -224,7 +241,6 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final Stack<AtomicInteger> stackPos = new Stack<>();
         private final AtomicInteger leafPos = new AtomicInteger();
         private Leaf<K, V> leaf;
-        private Pair<V> last;
 
         private BTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to, boolean toInclusive) {
             this(comparator, from, fromInclusive, to, toInclusive, true);
@@ -237,69 +253,76 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             this.comparator = comparator;
             this.excludeDeleted = excludeDeleted;
 
-            if (from == null) {
-                pointToStart();
-            } else {
-                // Find the starting point
-                findLeaf(from);
-                int pos = leaf.findNearest(from);
-                K k = leaf.getKeys().get(pos);
-                int comp = comparator.compare((K) from, k);
-                if (comp < 0) {
-                    leafPos.set(pos);
-                } else if (comp == 0) {
-                    leafPos.set(fromInclusive ? pos : pos + 1);
+            lock.readLock().lock();
+            try {
+                if (from == null) {
+                    pointToStart();
                 } else {
-                    leafPos.set(pos + 1);
+                    // Find the starting point
+                    findLeaf(from);
+                    int pos = leaf.findNearest(from);
+                    K k = leaf.getKeys().get(pos);
+                    int comp = comparator.compare((K) from, k);
+                    if (comp < 0) {
+                        leafPos.set(pos);
+                    } else if (comp == 0) {
+                        leafPos.set(fromInclusive ? pos : pos + 1);
+                    } else {
+                        leafPos.set(pos + 1);
+                    }
                 }
+            } finally {
+                lock.readLock().unlock();
             }
         }
 
         @Override
         public boolean hasNext() {
-            if (leaf == null) {
-                return false;
-            }
-            if (leafPos.get() >= leaf.getValues().size()) {
-                advance();
-            }
-            while (leaf != null && excludeDeleted) {
-                Pair<V> value = leaf.getValues().get(leafPos.get());
-                if (!value.isDeleted()) {
-                    break; // break out.
+            lock.readLock().lock();
+            try {
+                if (leaf == null) {
+                    return false;
                 }
-                advance();
-            }
-            if (to != null) {
-                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
-                if (comp > 0 || (comp == 0 && !toInclusive)) {
-                    leaf = null;
-                    leafPos.set(-1);
-                    stack.clear();
-                    stackPos.clear();
+                if (leafPos.get() >= leaf.getValues().size()) {
+                    advance();
                 }
+                while (leaf != null && excludeDeleted) {
+                    Pair<V> value = leaf.getValues().get(leafPos.get());
+                    if (!value.isDeleted()) {
+                        break; // break out.
+                    }
+                    advance();
+                }
+                if (to != null) {
+                    int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                    if (comp > 0 || (comp == 0 && !toInclusive)) {
+                        leaf = null;
+                        leafPos.set(-1);
+                        stack.clear();
+                        stackPos.clear();
+                    }
+                }
+                return leaf != null;
+            } finally {
+                lock.readLock().unlock();
             }
-            return leaf != null;
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public Entry<K, V> next() {
-            if (!hasNext()) {
-                return null;
+            lock.readLock().lock();
+            try {
+                if (!hasNext()) {
+                    return null;
+                }
+                K key = leaf.getKeys().get(leafPos.get());
+                Pair<V> child = leaf.getValues().get(leafPos.getAndIncrement());
+                advance();
+                return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
+            } finally {
+                lock.readLock().unlock();
             }
-            K key = leaf.getKeys().get(leafPos.get());
-            Pair<V> child = leaf.getValues().get(leafPos.getAndIncrement());
-            advance();
-            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
-        }
-
-        @Override
-        public void remove() {
-            last.setDeleted(true);
-            last = null;
-            // Decrement
-            size.decrementAndGet();
         }
 
         @SuppressWarnings("unchecked")
@@ -390,6 +413,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final Stack<AtomicInteger> stackPos = new Stack<>();
         private final AtomicInteger leafPos = new AtomicInteger();
         private Leaf<K, V> leaf;
+        private Pair<V> last;
 
         private ReverseBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to,
                                         boolean toInclusive) {
@@ -403,58 +427,73 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             this.comparator = comparator;
             this.excludeDeleted = excludeDeleted;
 
-            if (from == null) {
-                pointToStart();
-            } else {
-                // Find the starting point
-                findLeaf(from);
-                int pos = leaf.findNearest(from);
-                K k = leaf.getKeys().get(pos);
-                int comp = comparator.compare((K) from, k);
-                if (comp != 0) {
-                    leafPos.set(pos);
-                } else if (comp == 0) {
-                    leafPos.set(fromInclusive ? pos : pos - 1);
+            lock.readLock().lock();
+            try {
+                if (from == null) {
+                    pointToStart();
+                } else {
+                    // Find the starting point
+                    findLeaf(from);
+                    int pos = leaf.findNearest(from);
+                    K k = leaf.getKeys().get(pos);
+                    int comp = comparator.compare((K) from, k);
+                    if (comp != 0) {
+                        leafPos.set(pos);
+                    } else if (comp == 0) {
+                        leafPos.set(fromInclusive ? pos : pos - 1);
+                    }
                 }
+            } finally {
+                lock.readLock().unlock();
             }
         }
 
         @Override
         public boolean hasNext() {
-            if (leaf == null) {
-                return false;
-            }
-            while (leaf != null && excludeDeleted) {
-                Pair<V> value = leaf.getValues().get(leafPos.get());
-                if (!value.isDeleted()) {
-                    break; // break out.
+            lock.readLock().lock();
+            try {
+                if (leaf == null) {
+                    return false;
                 }
-                advance();
-            }
-            if (leafPos.get() < 0) {
-                advance();
-            } else if (to != null) {
-                int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
-                if (comp > 0 || (comp == 0 && !toInclusive)) {
-                    leaf = null;
-                    leafPos.set(-1);
-                    stack.clear();
-                    stackPos.clear();
+                while (leaf != null && excludeDeleted) {
+                    Pair<V> value = leaf.getValues().get(leafPos.get());
+                    if (!value.isDeleted()) {
+                        break; // break out.
+                    }
+                    advance();
                 }
+                if (leafPos.get() < 0) {
+                    advance();
+                } else if (to != null) {
+                    int comp = comparator.compare(leaf.getKeys().get(leafPos.get()), to);
+                    if (comp > 0 || (comp == 0 && !toInclusive)) {
+                        leaf = null;
+                        leafPos.set(-1);
+                        stack.clear();
+                        stackPos.clear();
+                    }
+                }
+                return leaf != null;
+            } finally {
+                lock.readLock().unlock();
             }
-            return leaf != null;
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public Entry<K, V> next() {
-            if (!hasNext()) {
-                return null;
+            lock.readLock().lock();
+            try {
+                if (!hasNext()) {
+                    return null;
+                }
+                K key = leaf.getKeys().get(leafPos.get());
+                Pair<V> child = leaf.getValues().get(leafPos.getAndDecrement());
+                advance();
+                return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
+            } finally {
+                lock.readLock().unlock();
             }
-            K key = leaf.getKeys().get(leafPos.get());
-            Pair<V> child = leaf.getValues().get(leafPos.getAndDecrement());
-            advance();
-            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
         }
 
         @SuppressWarnings("unchecked")

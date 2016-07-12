@@ -22,7 +22,9 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
@@ -125,6 +127,306 @@ public class ImmutableBTreeMapTest {
                 assertEquals(new Long(counter.getAndIncrement()), entry.getKey());
             }
             assertEquals(10000l, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    //###########################################################################################
+    //#                          ITERATORS                                                      #
+    //###########################################################################################
+
+    @Test
+    public void testSubMapIterator() throws Exception {
+
+        // Add a million records to map
+        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        long start = System.nanoTime();
+        for (long i = 0; i < 10000; i++) {
+            assertNotNull(map.put(i, i));
+        }
+        long end = System.nanoTime();
+        long time = end - start;
+        System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, true, 513l, true);
+            AtomicLong counter = new AtomicLong(59l);
+            Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+            }
+            assertEquals(514l, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testSubMapIteratorExclusive() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, false, 513l, false);
+            AtomicLong counter = new AtomicLong(60);
+            Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+            }
+            assertEquals(513l, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testSubMapIteratorFromExclusive() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, false, 513l, true);
+            AtomicLong counter = new AtomicLong(60);
+            Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+            }
+            assertEquals(514l, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testSubMapIteratorToExclusive() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, true, 513l, false);
+            AtomicLong counter = new AtomicLong(59);
+            Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+            }
+            assertEquals(513l, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    //###########################################################################################
+    //#                         REVERSE ITERATORS                                               #
+    //###########################################################################################
+
+    @Test
+    public void testSubMapReverseIterator() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, true, 513l, true);
+            AtomicLong counter = new AtomicLong(513);
+            Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+            }
+            assertEquals(58, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testSubMapReverseIteratorExclusive() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, false, 513l, false);
+            AtomicLong counter = new AtomicLong(512);
+            Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+            }
+            assertEquals(59, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testSubMapReverseIteratorFromExclusive() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, false, 513l, true);
+            AtomicLong counter = new AtomicLong(513);
+            Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+            }
+            assertEquals(59, counter.get());
+        } finally {
+            tmp.delete();
+        }
+    }
+
+    @Test
+    public void testSubMapReverseIteratorToExclusive() throws Exception {
+
+        File tmp = File.createTempFile("immutable", ".db");
+        try {
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+                    ImmutableBTree.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
+                            new NumberSerializer<>(Long.class)));
+            // Add a million records to map
+            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            long start = System.nanoTime();
+            for (long i = 0; i < 10000; i++) {
+                assertNotNull(map.put(i, i));
+            }
+            long end = System.nanoTime();
+            long time = end - start;
+            System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
+
+            start = System.nanoTime();
+            ImmutableBTree<Long, Long> immutableMap = ImmutableBTree.write(recordFile, "test", map);
+            end = System.nanoTime();
+            System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
+
+            // Iterate a million records
+            ConcurrentNavigableMap<Long, Long> sub = immutableMap.subMap(59l, true, 513l, false);
+            AtomicLong counter = new AtomicLong(512);
+            Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
+            while (it.hasNext()) {
+                assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+            }
+            assertEquals(58, counter.get());
         } finally {
             tmp.delete();
         }
