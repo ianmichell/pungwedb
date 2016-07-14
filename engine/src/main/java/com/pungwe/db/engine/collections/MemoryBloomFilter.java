@@ -11,9 +11,8 @@ public class MemoryBloomFilter<E> extends BloomFilter<E> {
 
     private final BitSet filter = new BitSet();
 
-    public MemoryBloomFilter(Serializer<E> elementSerializer, double falseProbabilityRate,
-                             long expectedNumberOfElements) {
-        super(elementSerializer);
+    public MemoryBloomFilter(Serializer<E> elementSerializer, double bitsPerElement, long expectedElements, int hashes) {
+        super(elementSerializer, bitsPerElement, expectedElements, hashes);
     }
 
     @Override
