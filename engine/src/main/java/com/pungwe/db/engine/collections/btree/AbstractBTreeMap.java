@@ -27,7 +27,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     private final AtomicInteger levels = new AtomicInteger();
     protected final Comparator<K> comparator;
 
-    public AbstractBTreeMap(Comparator<K> comparator) {
+    protected AbstractBTreeMap(Comparator<K> comparator) {
         this.comparator = comparator;
     }
 
@@ -68,12 +68,12 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
     @Override
     public NavigableSet<K> navigableKeySet() {
-        return new KeySet<K>(this);
+        return new KeySet<>(this);
     }
 
     @Override
     public NavigableSet<K> keySet() {
-        return new KeySet<K>(this);
+        return new KeySet<>(this);
     }
 
     @Override
@@ -256,7 +256,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     @Override
     @SuppressWarnings("unchecked")
     public boolean containsKey(Object key) {
-        return get((K)key) != null;
+        return get(key) != null;
     }
 
     @Override
@@ -276,7 +276,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
     @Override
     public V put(K key, V value) {
-        Entry<K,V> entry = putEntry(new BTreeEntry<K, V>(key, value, false));
+        Entry<K,V> entry = putEntry(new BTreeEntry<>(key, value, false));
         return entry.getValue();
     }
 
@@ -334,6 +334,10 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     protected abstract Iterator<Entry<K,V>> reverseIterator(K fromKey, boolean fromInclusive, K toKey,
                                                                   boolean toInclusive);
 
+    protected abstract Iterator<Entry<K,V>> mergeIterator();
+    protected abstract Iterator<Entry<K,V>> mergeIterator(K fromKey, boolean fromInclusive, K toKey,
+                                                          boolean toInclusive);
+
     protected abstract Node<K,?> rootNode();
 
     public static class BTreeEntry<K,V> implements Entry<K,V> {
@@ -390,6 +394,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             return parent.rootNode();
         }
 
+        @SuppressWarnings("unchecked")
         private boolean inBounds(K key) {
 
             // We don't want null keys!
@@ -518,6 +523,16 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         protected Iterator<Entry<K, V>> reverseIterator(K from, boolean fromInclusive, K to,
                                                               boolean toInclusive) {
             return parent.reverseIterator(from, fromInclusive, to, toInclusive);
+        }
+
+        @Override
+        protected Iterator<Entry<K, V>> mergeIterator() {
+            return mergeIterator(low, lowInclusive, high, highInclusive);
+        }
+
+        @Override
+        protected Iterator<Entry<K, V>> mergeIterator(K fromKey, boolean fromInclusive, K toKey, boolean toInclusive) {
+            return parent.mergeIterator(fromKey, fromInclusive, toKey, toInclusive);
         }
     }
 
@@ -843,9 +858,8 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         @Override
         public Comparator<? super Entry<K, V>> comparator() {
-            return (o1, o2) -> {
-                return map.comparator().compare(o1 == null ? null : o1.getKey(), o2 == null ? null : o2.getKey());
-            };
+            return (o1, o2) -> map.comparator().compare(o1 == null ? null : o1.getKey(),
+                    o2 == null ? null : o2.getKey());
         }
 
         @Override
@@ -869,6 +883,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public boolean contains(Object o) {
             if (o == null) {
                 return false;
@@ -952,7 +967,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
     protected static abstract class Node<K, T> {
 
-        protected List<K> keys = new ArrayList<K>();
+        protected List<K> keys = new ArrayList<>();
         protected Comparator<K> comparator;
 
         public Node(Comparator<K> comparator) {
@@ -991,7 +1006,8 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         public Branch(Comparator<K> comparator, List<T> children) {
             super(comparator);
-            this.children = children;
+            this.children = new ArrayList<>(children.size());
+            this.children.addAll(children);
         }
 
         protected List<T> getChildren() {
@@ -999,9 +1015,9 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
     }
 
-    protected static class Leaf<K, V> extends Node<K, Pair<V>> {
+    protected abstract static class Leaf<K, V, N extends Leaf> extends Node<K, Pair<V>> {
 
-        private List<Pair<V>> values = new ArrayList<>();
+        protected List<Pair<V>> values = new ArrayList<>();
 
         public Leaf(Comparator<K> comparator) {
             super(comparator);
@@ -1050,19 +1066,13 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         @Override
         public Node<K, Pair<V>>[] split() {
             int mid = keys.size() - 1 >>> 1;
-            Leaf<K, V> left = new Leaf<>(comparator);
-            left.keys = new ArrayList<>();
-            left.keys.addAll(keys.subList(0, mid));
-            left.values = new ArrayList<>();
-            left.values.addAll(values.subList(0, mid));
-            Leaf<K, V> right = new Leaf<>(comparator);
-            right.keys = new ArrayList<>();
-            right.keys.addAll(keys.subList(mid, keys.size()));
-            right.values = new ArrayList<>();
-            right.values.addAll(values.subList(mid, values.size()));
-
+            N left = newLeaf(keys.subList(0, mid), values.subList(0, mid));
+            N right = newLeaf(keys.subList(mid, keys.size()), values.subList(mid, values.size()));
             return new Node[] { left, right };
         }
+
+        protected abstract N newLeaf();
+        protected abstract N newLeaf(List<K> keys, List<Pair<V>> values);
     }
 
     protected static class Pair<V> {

@@ -19,20 +19,6 @@ public final class UUIDGen {
     private static final long START_EPOCH = -12219292800000L;
     private static final long clockSeqAndNode = makeClockSeqAndNode();
 
-    /*
-     * The min and max possible lsb for a UUID.
-     * Note that his is not 0 and all 1's because Cassandra TimeUUIDType
-     * compares the lsb parts as a signed byte array comparison. So the min
-     * value is 8 times -128 and the max is 8 times +127.
-     *
-     * Note that we ignore the uuid variant (namely, MIN_CLOCK_SEQ_AND_NODE
-     * have variant 2 as it should, but MAX_CLOCK_SEQ_AND_NODE have variant 0).
-     * I don't think that has any practical consequence and is more robust in
-     * case someone provides a UUID with a broken variant.
-     */
-    private static final long MIN_CLOCK_SEQ_AND_NODE = 0x8080808080808080L;
-    private static final long MAX_CLOCK_SEQ_AND_NODE = 0x7f7f7f7f7f7f7f7fL;
-
     // placement of this singleton is important.  It needs to be instantiated *AFTER* the other statics.
     private static final UUIDGen instance = new UUIDGen();
 
@@ -52,14 +38,6 @@ public final class UUIDGen {
         return new UUID(instance.createTimeSafe(), clockSeqAndNode);
     }
 
-    /**
-     * Creates a type 1 UUID (time-based UUID) with the timestamp of @param when, in milliseconds.
-     *
-     * @return a UUID instance
-     */
-    public static UUID getTimeUUID(long when) {
-        return new UUID(createTime(fromUnixTimestamp(when)), clockSeqAndNode);
-    }
     /**
      * creates a type 1 uuid from raw bytes.
      */
@@ -184,7 +162,7 @@ public final class UUIDGen {
         long newLastNanos;
         while (true) {
             //Generate a candidate value for new lastNanos
-            newLastNanos = (System.currentTimeMillis() - START_EPOCH) * 1000000;
+            newLastNanos = ((System.currentTimeMillis() - START_EPOCH) * 1000000l);
             long originalLastNanos = lastNanos.get();
             if (newLastNanos > originalLastNanos) {
                 //Slow path once per millisecond do a CAS
