@@ -20,14 +20,40 @@ import com.pungwe.db.core.result.InsertResult;
 import com.pungwe.db.core.result.QueryResult;
 import com.pungwe.db.core.result.UpdateResult;
 import com.pungwe.db.core.types.Bucket;
+import com.pungwe.db.engine.io.RecordDirectory;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Created by ian on 12/07/2016.
+ * <p>This class manages a local database instance within the default storage engine. It's configured with a
+ * <code>RecordDirectory</code> and corresponding options within it's meta data.</p>
+ * <p>A bucket instance provides an access point for inserting, updating and finding records.</p>
+ *
+ * <p>
+ *     <code>
+ *          Result result = bucket.find(Query.select("*").where("key").equalTo("value").and("key2").in(1,2,3).get();
+ *     </code>
+ * </p>
+ *
+ * <p>All operational methods return a <code>Promise</code> object allowing for asynchronous processing.</p>
+ * <p>
+ *     <code>
+ *          bucket.find(Query.select("*").where("key").equalTo("value")).then((result) -> {
+ *              ...
+ *          }).resolve();
+ *     </code>
+ * </p>
  */
 public class BucketImpl<T> implements Bucket<T> {
+
+    protected BucketImpl(RecordDirectory directory, String name, Map<String, Object> metaData) {
+
+    }
+
+    public BucketImpl<T> getInstance(RecordDirectory recordDirectory, String name) {
+        return null;
+    }
 
     @Override
     public Promise<List<String>> indexes() {
