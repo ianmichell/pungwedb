@@ -30,6 +30,7 @@ public interface RecordFile<E> extends Iterable<E> {
 
         long append(E value) throws IOException;
         void commit() throws IOException;
+        long getPosition() throws IOException;
 
     }
 

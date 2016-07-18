@@ -155,7 +155,11 @@ public class BasicRecordFile<E> implements RecordFile<E> {
 
     @Override
     public Iterator<E> iterator() {
-        return null;
+        try {
+            return new BasicRecordFileReader(0l);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     private class BasicRecordFileReader implements Reader<E> {
@@ -235,6 +239,11 @@ public class BasicRecordFile<E> implements RecordFile<E> {
             }
             // 16MB buffer...
             buffer = ByteBuffer.allocate(16 << 20).order(ByteOrder.BIG_ENDIAN);
+        }
+
+        @Override
+        public long getPosition() throws IOException {
+            return position.get();
         }
 
         @Override
