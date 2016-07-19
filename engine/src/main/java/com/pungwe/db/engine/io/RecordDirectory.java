@@ -14,9 +14,7 @@
 package com.pungwe.db.engine.io;
 
 /**
- * <p>A <code>RecordDirectory</code> instance is used to manage a directory containing named instances of
- * <code>RecordFile</code> and their metadata.</p>
+ * Created by ian on 18/07/2016.
  */
 public class RecordDirectory {
-
 }

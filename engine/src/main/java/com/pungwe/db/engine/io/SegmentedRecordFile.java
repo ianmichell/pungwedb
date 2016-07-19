@@ -24,7 +24,9 @@ public class SegmentedRecordFile<E> implements RecordFile<E> {
     private final int maxSegments;
     private final int writeBuffer;
     private final int segmentSize;
-    private final AtomicInteger segment = new AtomicInteger();
+    private final int segmentModMask;
+    private RandomAccessFile[] segments = new RandomAccessFile[0];
+
     // Meta data holder.
     private Map<String, Object> meta;
 
@@ -59,6 +61,7 @@ public class SegmentedRecordFile<E> implements RecordFile<E> {
         this.maxSegments = maxSegments;
         this.writeBuffer = writeBuffer;
         this.segmentSize = segmentSize;
+        this.segmentModMask = segmentSize - 1;
 
         // Check if the parent file exists
         if (!parent.exists()) {
@@ -131,6 +134,10 @@ public class SegmentedRecordFile<E> implements RecordFile<E> {
         return meta;
     }
 
+    public long size() {
+        return 0l;
+    }
+
     @Override
     public Iterator<E> iterator() {
         return null;
@@ -138,22 +145,36 @@ public class SegmentedRecordFile<E> implements RecordFile<E> {
 
     private class SegmentedReader<E> implements Reader<E> {
 
-        private final AtomicLong positoion = new AtomicLong();
+        private final AtomicLong position = new AtomicLong();
+        private final AtomicLong currentSegment = new AtomicLong();
+        // The current segment
+        private RandomAccessFile segment;
 
+        public SegmentedReader(long position) {
+            this.position.set(position);
+        }
 
         @Override
         public long getPosition() throws IOException {
-            return 0;
+            return position.get();
         }
 
         @Override
         public void setPosition(long position) throws IOException {
+            this.position.set(position);
+        }
 
+        private int getSegmentPosition() throws IOException {
+            int pos = (int)(getPosition() & segmentModMask);
+            return pos;
+        }
+
+        private int calculateSegment() {
+            return (int)Math.floor(position.get() / segmentSize);
         }
 
         @Override
         public void close() throws IOException {
-
         }
 
         @Override
