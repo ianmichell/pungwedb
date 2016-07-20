@@ -371,6 +371,15 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         public boolean isDeleted() {
             return deleted;
         }
+
+        @Override
+        public String toString() {
+            return "{" +
+                    "key=" + key +
+                    ", value=" + value +
+                    ", deleted=" + deleted +
+                    '}';
+        }
     }
 
     public static class SubMap<K, V> extends AbstractBTreeMap<K,V> {
@@ -1076,8 +1085,8 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     }
 
     protected static class Pair<V> {
-        public V value;
-        public boolean deleted;
+        private V value;
+        private boolean deleted;
 
         public Pair(V value, boolean deleted) {
             this.value = value;

@@ -21,20 +21,19 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Created by ian on 09/07/2016.
  */
-public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
+public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
     private final RecordFile<Node<K, ?>> recordFile;
     private long size;
     private final Node<K, ?> rootNode;
 
-    private ImmutableBTree(Comparator<K> comparator, RecordFile<Node<K, ?>> recordFile) throws IOException {
+    private ImmutableBTreeMap(Comparator<K> comparator, RecordFile<Node<K, ?>> recordFile) throws IOException {
         super(comparator);
         this.recordFile = recordFile;
         this.rootNode = findRootNode();
@@ -45,23 +44,23 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
         return new ImmutableNodeSerializer<>(comparator, keySerializer, valueSerializer);
     }
 
-    public static <K, V> ImmutableBTree<K, V> write(RecordFile<Node<K, ?>> recordFile, String treeName,
-                                                    AbstractBTreeMap<K, V> treeToWrite) throws IOException {
+    public static <K, V> ImmutableBTreeMap<K, V> write(RecordFile<Node<K, ?>> recordFile, String treeName,
+                                                       AbstractBTreeMap<K, V> treeToWrite) throws IOException {
         BTreeWriter<K, V> writer = new BTreeWriter<>(recordFile);
         return writer.write(treeName, treeToWrite);
     }
 
-    public static <K, V> ImmutableBTree<K, V> merge(RecordFile<Node<K, ?>> recordFile, String treeName,
-                                                    int maxKeysPerNode, AbstractBTreeMap<K,V> left,
-                                                    AbstractBTreeMap<K,V> right) throws IOException {
+    public static <K, V> ImmutableBTreeMap<K, V> merge(RecordFile<Node<K, ?>> recordFile, String treeName,
+                                                       int maxKeysPerNode, AbstractBTreeMap<K,V> left,
+                                                       AbstractBTreeMap<K,V> right) throws IOException {
 
         BTreeMergeWriter<K,V> writer = new BTreeMergeWriter<>(maxKeysPerNode, recordFile);
         return writer.merge(treeName, left, right);
     }
 
-    public static <K, V> ImmutableBTree<K, V> getInstance(Comparator<K> comparator, RecordFile<Node<K, ?>> recordFile)
+    public static <K, V> ImmutableBTreeMap<K, V> getInstance(Comparator<K> comparator, RecordFile<Node<K, ?>> recordFile)
             throws IOException {
-        return new ImmutableBTree<>(comparator, recordFile);
+        return new ImmutableBTreeMap<>(comparator, recordFile);
     }
 
     private Node<K, ?> findRootNode() throws IOException {
@@ -233,14 +232,14 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
         }
 
         /**
-         * Writes the given btree to a <code>RecordFile</code> and returns an instance of an <code>ImmutableBTree</code>
+         * Writes the given btree to a <code>RecordFile</code> and returns an instance of an <code>ImmutableBTreeMap</code>
          *
          * @param btreeToWrite an instance of <code>AbstractBTree</code> to write.
-         * @return an instance of <code>ImmutableBTree</code>
+         * @return an instance of <code>ImmutableBTreeMap</code>
          * @throws IOException if there is a problem writing to the <code>RecordFile</code>
          */
         @SuppressWarnings("unchecked")
-        public ImmutableBTree<K, V> write(String name, AbstractBTreeMap<K, V> btreeToWrite) throws IOException {
+        public ImmutableBTreeMap<K, V> write(String name, AbstractBTreeMap<K, V> btreeToWrite) throws IOException {
             RecordFile.Writer<Node<K, ?>> writer = recordFile.writer();
             Node<K, ?> root = btreeToWrite.rootNode();
             long rootPosition = 0;
@@ -260,8 +259,8 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
             recordFile.setMetaData(metaData);
             // Sync the record to disk
             writer.commit();
-            // Once the root node is written, then return a new instance of the ImmutableBTree
-            return new ImmutableBTree<>((Comparator<K>) btreeToWrite.comparator(), recordFile);
+            // Once the root node is written, then return a new instance of the ImmutableBTreeMap
+            return new ImmutableBTreeMap<>((Comparator<K>) btreeToWrite.comparator(), recordFile);
         }
 
         @SuppressWarnings("unchecked")
@@ -350,7 +349,7 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
          * @throws IOException
          */
         @SuppressWarnings("unchecked")
-        public ImmutableBTree<K, V> merge(String name, AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right) throws IOException {
+        public ImmutableBTreeMap<K, V> merge(String name, AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right) throws IOException {
 
             if (!isSameDirection(left, right)) {
                 throw new IOException("Trees are not ordered in the same direction...");
@@ -392,7 +391,7 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
                     // Sync the record to disk
                     writer.commit();
                     // Write the meta data
-                    return new ImmutableBTree<>(left.comparator, recordFile);
+                    return new ImmutableBTreeMap<>(left.comparator, recordFile);
                 }
 
                 if (hasNext && parents.peek().keys.size() < maxKeysPerNode) {
@@ -448,7 +447,7 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
                     // Sync the record to disk
                     writer.commit();
                     // Write the meta data
-                    return new ImmutableBTree<>(left.comparator, recordFile);
+                    return new ImmutableBTreeMap<>(left.comparator, recordFile);
                 }
 
                 // Create a new branch
@@ -466,7 +465,7 @@ public class ImmutableBTree<K, V> extends AbstractBTreeMap<K, V> {
                     // Sync the record to disk
                     writer.commit();
                     // Write the meta data
-                    return new ImmutableBTree<>(left.comparator, recordFile);
+                    return new ImmutableBTreeMap<>(left.comparator, recordFile);
                 }
                 if (parents.peek().children.size() > 0) {
                     parents.peek().keys.add(branch.getKeys().get(0));

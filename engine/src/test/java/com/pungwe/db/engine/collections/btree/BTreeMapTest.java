@@ -2,7 +2,9 @@ package com.pungwe.db.engine.collections.btree;
 
 import org.junit.Test;
 
+import java.math.BigDecimal;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -416,5 +418,55 @@ public class BTreeMapTest {
             assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
         }
         assertEquals(58, counter.get());
+    }
+
+    //###########################################################################################
+    //#                         ARBITRARY KEYS                                                  #
+    //##########################################################################################
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testArbitraryKeys() throws Exception {
+
+        BTreeMap<Object, Object> map = new BTreeMap<>((o1, o2) -> {
+            if (o1 == null || o2 == null) {
+                throw new IllegalArgumentException("Cannot contain null keys");
+            }
+            // Compare numbers
+            if (Number.class.isAssignableFrom(o1.getClass()) && Number.class.isAssignableFrom(o2.getClass())) {
+                return new BigDecimal(o1.toString()).compareTo(new BigDecimal(o2.toString()));
+            }
+            // If String
+            if (String.class.isAssignableFrom(o1.getClass()) && String.class.isAssignableFrom(o2.getClass())) {
+                return ((String)o1).compareTo((String)o2);
+            }
+            // Boolean
+            if (Boolean.class.isAssignableFrom(o1.getClass()) && Boolean.class.isAssignableFrom(o2.getClass())) {
+                return ((Boolean)o1).compareTo((Boolean)o2);
+            }
+            // Everything else...
+            return Integer.compare(o1.hashCode(), o2.hashCode());
+        }, 10);
+
+        map.put("key", "value");
+        map.put(1, 1);
+        map.put(2, 2);
+        Map<String, Object> key1 = new LinkedHashMap<>();
+        key1.put("key", "value");
+        Map<String, Object> key2 = new LinkedHashMap<>();
+        key2.put("another key", "value");
+        map.put(key1, key1);
+        map.put(key2, key2);
+
+        Iterator<Map.Entry<Object, Object>> it = map.iterator();
+        while (it.hasNext()) {
+            System.out.println(it.next());
+        }
+
+        assertEquals("value", map.get("key"));
+        assertEquals(1, map.get(1));
+        assertEquals(2, map.get(2));
+        assertEquals(key1, map.get(key1));
+        assertEquals(key2, map.get(key2));
     }
 }
