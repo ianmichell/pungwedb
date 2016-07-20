@@ -15,6 +15,7 @@ package com.pungwe.db.engine.collections.btree;
 
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.RecordFile;
+import com.sun.istack.internal.Nullable;
 
 import java.io.Closeable;
 import java.io.DataInput;
@@ -29,13 +30,16 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
-    private final RecordFile<Node<K, ?>> recordFile;
+    private final RecordFile<Node<K, ?>> keyFile;
+    private final RecordFile<V> valueFile;
     private long size;
     private final Node<K, ?> rootNode;
 
-    private ImmutableBTreeMap(Comparator<K> comparator, RecordFile<Node<K, ?>> recordFile) throws IOException {
+    private ImmutableBTreeMap(Comparator<K> comparator, RecordFile<Node<K, ?>> keyFile,
+                              @Nullable RecordFile<V> valueFile) throws IOException {
         super(comparator);
-        this.recordFile = recordFile;
+        this.keyFile = keyFile;
+        this.valueFile = valueFile;
         this.rootNode = findRootNode();
     }
 
@@ -46,25 +50,33 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
     public static <K, V> ImmutableBTreeMap<K, V> write(RecordFile<Node<K, ?>> recordFile, String treeName,
                                                        AbstractBTreeMap<K, V> treeToWrite) throws IOException {
-        BTreeWriter<K, V> writer = new BTreeWriter<>(recordFile);
+        // Write data inline...
+        return write(recordFile, null, treeName, treeToWrite);
+    }
+
+    public static <K, V> ImmutableBTreeMap<K, V> write(RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile,
+                                                       String treeName, AbstractBTreeMap<K, V> treeToWrite)
+            throws IOException {
+        BTreeWriter<K, V> writer = new BTreeWriter<>(keyFile, valueFile);
         return writer.write(treeName, treeToWrite);
     }
 
-    public static <K, V> ImmutableBTreeMap<K, V> merge(RecordFile<Node<K, ?>> recordFile, String treeName,
-                                                       int maxKeysPerNode, AbstractBTreeMap<K,V> left,
-                                                       AbstractBTreeMap<K,V> right) throws IOException {
+    public static <K, V> ImmutableBTreeMap<K, V> merge(RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile,
+                                                       String treeName, int maxKeysPerNode, AbstractBTreeMap<K, V> left,
+                                                       AbstractBTreeMap<K, V> right, boolean gc) throws IOException {
 
-        BTreeMergeWriter<K,V> writer = new BTreeMergeWriter<>(maxKeysPerNode, recordFile);
-        return writer.merge(treeName, left, right);
+        BTreeMergeWriter<K, V> writer = new BTreeMergeWriter<>(maxKeysPerNode, keyFile, valueFile);
+        return writer.merge(treeName, left, right, gc);
     }
 
-    public static <K, V> ImmutableBTreeMap<K, V> getInstance(Comparator<K> comparator, RecordFile<Node<K, ?>> recordFile)
+    public static <K, V> ImmutableBTreeMap<K, V> getInstance(Comparator<K> comparator,
+                                                             RecordFile<Node<K, ?>> recordFile, RecordFile<V> valueFile)
             throws IOException {
-        return new ImmutableBTreeMap<>(comparator, recordFile);
+        return new ImmutableBTreeMap<>(comparator, recordFile, valueFile);
     }
 
     private Node<K, ?> findRootNode() throws IOException {
-        Map<String, Object> metaData = recordFile.getMetaData();
+        Map<String, Object> metaData = keyFile.getMetaData();
         Object size = metaData.getOrDefault("size", 0);
         Object rootPointer = metaData.get("root");
         long root = Number.class.isAssignableFrom(rootPointer.getClass()) ? ((Number) rootPointer).longValue() :
@@ -72,7 +84,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         this.size = Number.class.isAssignableFrom(size.getClass()) ? ((Number) size).longValue() :
                 new Long(size.toString());
         // Get the root node!
-        return recordFile.get(root);
+        return keyFile.get(root);
     }
 
     @Override
@@ -89,12 +101,19 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     @SuppressWarnings("unchecked")
     protected BTreeEntry<K, V> getEntry(K key) {
         try {
-            ImmutableLeaf<K, V> leaf = findLeafForKey(key);
-            Pair<V> pair = leaf.get(key);
+            ImmutableLeaf<K> leaf = findLeafForKey(key);
+            Pair<Object> pair = leaf.get(key);
             if (pair == null || pair.isDeleted()) {
                 return null;
             }
-            return new BTreeEntry<>(key, pair.getValue(), pair.isDeleted());
+
+            Object value = pair.getValue();
+            if (valueFile != null) {
+                // If the value file is not null, then we are going to expect a long.
+                value = valueFile.get((Long) value);
+            }
+
+            return new BTreeEntry<>(key, (V) value, pair.isDeleted());
         } catch (IOException ex) {
             // There was an issue reading...
             throw new RuntimeException(ex);
@@ -102,7 +121,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     }
 
     @SuppressWarnings("unchecked")
-    private ImmutableLeaf<K, V> findLeafForKey(K key) throws IOException {
+    private ImmutableLeaf<K> findLeafForKey(K key) throws IOException {
         Node<K, ?> node = rootNode;
         while (Branch.class.isAssignableFrom(node.getClass())) {
             int pos = (node).findNearest(key);
@@ -110,12 +129,12 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             Long[] children = ((ImmutableBranch<K>) node).get(found);
             int cmp = comparator.compare(found, key);
             if (cmp <= 0) {
-                node = recordFile.get(children[1]);
+                node = keyFile.get(children[1]);
             } else {
-                node = recordFile.get(children[0]);
+                node = keyFile.get(children[0]);
             }
         }
-        return (ImmutableLeaf<K, V>) node;
+        return (ImmutableLeaf<K>) node;
     }
 
     @Override
@@ -201,34 +220,36 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
     }
 
-    private static class ImmutableLeaf<K, V> extends Leaf<K, V, ImmutableLeaf<K, V>> {
+    private static class ImmutableLeaf<K> extends Leaf<K, Object, ImmutableLeaf<K>> {
 
         public ImmutableLeaf(Comparator<K> comparator) {
             super(comparator);
         }
 
-        public ImmutableLeaf(Comparator<K> comparator, List<K> keys, List<Pair<V>> values) {
+        public ImmutableLeaf(Comparator<K> comparator, List<K> keys, List<Pair<Object>> values) {
             super(comparator, keys, values);
         }
 
         @Override
-        protected ImmutableLeaf<K, V> newLeaf() {
+        protected ImmutableLeaf<K> newLeaf() {
             return new ImmutableLeaf<>(comparator);
         }
 
         @Override
-        protected ImmutableLeaf<K, V> newLeaf(List<K> keys, List<Pair<V>> values) {
+        protected ImmutableLeaf<K> newLeaf(List<K> keys, List<Pair<Object>> values) {
             return new ImmutableLeaf<>(comparator, keys, values);
         }
     }
 
     public static class BTreeWriter<K, V> implements Closeable {
 
-        private final RecordFile<Node<K, ?>> recordFile;
+        private final RecordFile<Node<K, ?>> keyFile;
+        private final RecordFile<V> valueFile;
 
         // FIXME: Record file might not be the way forward...
-        private BTreeWriter(RecordFile<Node<K, ?>> recordFile) {
-            this.recordFile = recordFile;
+        private BTreeWriter(RecordFile<Node<K, ?>> keyFile, @Nullable RecordFile<V> valueFile) {
+            this.keyFile = keyFile;
+            this.valueFile = valueFile;
         }
 
         /**
@@ -240,50 +261,62 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          */
         @SuppressWarnings("unchecked")
         public ImmutableBTreeMap<K, V> write(String name, AbstractBTreeMap<K, V> btreeToWrite) throws IOException {
-            RecordFile.Writer<Node<K, ?>> writer = recordFile.writer();
+            RecordFile.Writer<Node<K, ?>> keyWriter = keyFile.writer();
+            RecordFile.Writer<V> valueWriter = valueFile != null ? valueFile.writer() : null;
             Node<K, ?> root = btreeToWrite.rootNode();
             long rootPosition = 0;
             if (Leaf.class.isAssignableFrom(root.getClass())) {
                 // Root is a leaf and we should simply just write it to disk...
-                rootPosition = writer.append(root);
+                rootPosition = keyWriter.append(root);
             } else {
-                List<Long> children = writeChildren(writer, (Branch<K, Node>) root);
+                List<Long> children = writeChildren(keyWriter, valueWriter, (Branch<K, Node>) root);
                 ImmutableBranch<K> newRoot = new ImmutableBranch<>(root.comparator, root.getKeys(), children);
-                rootPosition = writer.append(newRoot);
+                rootPosition = keyWriter.append(newRoot);
             }
             // Write the meta data
             Map<String, Object> metaData = new LinkedHashMap<>();
             metaData.put("root", rootPosition);
             metaData.put("name", name);
             metaData.put("size", btreeToWrite.sizeLong());
-            recordFile.setMetaData(metaData);
+            keyFile.setMetaData(metaData);
             // Sync the record to disk
-            writer.commit();
+            keyWriter.commit();
             // Once the root node is written, then return a new instance of the ImmutableBTreeMap
-            return new ImmutableBTreeMap<>((Comparator<K>) btreeToWrite.comparator(), recordFile);
+            return new ImmutableBTreeMap<>((Comparator<K>) btreeToWrite.comparator(), keyFile, valueFile);
         }
 
         @SuppressWarnings("unchecked")
-        private List<Long> writeChildren(RecordFile.Writer<Node<K, ?>> writer, Branch<K, Node> branch)
+        private List<Long> writeChildren(RecordFile.Writer<Node<K, ?>> keyWriter,
+                                         @Nullable RecordFile.Writer<V> valueWriter, Branch<K, Node> branch)
                 throws IOException {
             // Use a linked list because they are nice and quick
             List<Long> children = new LinkedList<>();
             // Loop through each child and serialize.
             for (Node<K, ?> child : branch.getChildren()) {
                 // If child is a leaf, we can simply write it.
+                List<K> keys = child.getKeys();
                 if (Leaf.class.isAssignableFrom(child.getClass())) {
-                    ImmutableLeaf<K, V> leaf = new ImmutableLeaf<>(child.comparator, child.getKeys(),
-                            ((Leaf) child).getValues());
-                    long position = writer.append(leaf);
+                    List<Pair<Object>> values = new LinkedList<>();
+                    if (valueFile != null) {
+                        for (Pair<Object> value : values) {
+                            long position = valueWriter.append((V) value.getValue());
+                            values.add(new Pair<>(position, value.isDeleted()));
+                        }
+                    } else {
+                        values.addAll(((Leaf) child).getValues());
+                    }
+                    ImmutableLeaf<K> leaf = new ImmutableLeaf<>(child.comparator, keys, values);
+                    long position = keyWriter.append(leaf);
                     children.add(position);
                     continue;
                 }
                 // If the child is a branch, we need to do exactly the same thing
-                List<Long> grandChildren = writeChildren(writer, (Branch<K, Node>) child);
+                List<Long> grandChildren = writeChildren(keyWriter, valueWriter, (Branch<K, Node>) child);
+                // Add child to immutable branch.
                 ImmutableBranch<K> immutableChild = new ImmutableBranch<>(child.comparator, child.getKeys(),
                         grandChildren);
                 // write the immutableChild to the record file
-                long position = writer.append(immutableChild);
+                long position = keyWriter.append(immutableChild);
                 children.add(position);
             }
             return children;
@@ -303,25 +336,28 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     public static class BTreeMergeWriter<K, V> {
 
         private final int maxKeysPerNode;
-        private final RecordFile<Node<K, ?>> recordFile;
+        private final RecordFile<Node<K, ?>> keyFile;
+        private final RecordFile<V> valueFile;
         private final RecordFile.Writer<Node<K, ?>> writer;
 
         /**
          * Construct a new instance of the merge writer with the given node size and a record file.
-         *
+         * <p>
          * N.B. This will be much quicker if the maxKeysPerNode is higher than that of the trees passing in, however
          * some rationalisation is required and sensible number of keys per node on the bigger trees (like 1000) is
          * the most sensible, otherwise it could be slower.
          *
          * @param maxKeysPerNode the maximum number of keys per node
-         * @param recordFile the file for the tree to be written
-         *
+         * @param keyFile        the file for the tree to be written
+         * @param valueFile      the file where the values for each key is written (null if inline is required).
          * @throws IOException if there is a problem writing the tree.
          */
-        public BTreeMergeWriter(int maxKeysPerNode, RecordFile<Node<K, ?>> recordFile) throws IOException {
+        public BTreeMergeWriter(int maxKeysPerNode, RecordFile<Node<K, ?>> keyFile, @Nullable RecordFile<V> valueFile)
+                throws IOException {
             this.maxKeysPerNode = maxKeysPerNode;
-            this.recordFile = recordFile;
-            this.writer = recordFile.writer();
+            this.keyFile = keyFile;
+            this.valueFile = valueFile;
+            this.writer = keyFile.writer();
         }
 
         /**
@@ -343,13 +379,16 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          * N.B. Trees themselves to do not have to be of the same type. For example I can merge a <code>BTreeMap</code>
          * with an <code>ImmutableBtreeMap</code>.
          *
+         * @param name  the name of the new tree
          * @param left  tree to the left
          * @param right tree to the right
+         * @param gc    Garbage Collection. When true this option will not merge deletions.
          * @return a new immutable instance of the combined b+tree.
          * @throws IOException
          */
         @SuppressWarnings("unchecked")
-        public ImmutableBTreeMap<K, V> merge(String name, AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right) throws IOException {
+        public ImmutableBTreeMap<K, V> merge(String name, AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right,
+                                             boolean gc) throws IOException {
 
             if (!isSameDirection(left, right)) {
                 throw new IOException("Trees are not ordered in the same direction...");
@@ -375,7 +414,8 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (hasNext) {
 
                 // Create a leaf to add to the branch... Doesn't return anything as it populates keys and children
-                buildLeaf(treeSize, left.comparator, parents.peek().keys, parents.peek().children, leftRight, leftIT, rightIT);
+                buildLeaf(treeSize, left.comparator, parents.peek().keys, parents.peek().children,
+                        leftRight, leftIT, rightIT, gc);
 
                 // Has next will check if we have any entries left to process.
                 hasNext = leftIT.hasNext() || rightIT.hasNext() || leftRight[0] != null || leftRight[1] != null;
@@ -387,11 +427,11 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     metaData.put("root", parents.peek().children.get(0));
                     metaData.put("name", name);
                     metaData.put("size", treeSize.get());
-                    recordFile.setMetaData(metaData);
+                    keyFile.setMetaData(metaData);
                     // Sync the record to disk
                     writer.commit();
                     // Write the meta data
-                    return new ImmutableBTreeMap<>(left.comparator, recordFile);
+                    return new ImmutableBTreeMap<>(left.comparator, keyFile, valueFile);
                 }
 
                 if (hasNext && parents.peek().keys.size() < maxKeysPerNode) {
@@ -443,11 +483,11 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     metaData.put("root", pair.children.get(0));
                     metaData.put("name", name);
                     metaData.put("size", treeSize.get());
-                    recordFile.setMetaData(metaData);
+                    keyFile.setMetaData(metaData);
                     // Sync the record to disk
                     writer.commit();
                     // Write the meta data
-                    return new ImmutableBTreeMap<>(left.comparator, recordFile);
+                    return new ImmutableBTreeMap<>(left.comparator, keyFile, valueFile);
                 }
 
                 // Create a new branch
@@ -461,11 +501,11 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     metaData.put("root", position);
                     metaData.put("name", name);
                     metaData.put("size", treeSize.get());
-                    recordFile.setMetaData(metaData);
+                    keyFile.setMetaData(metaData);
                     // Sync the record to disk
                     writer.commit();
                     // Write the meta data
-                    return new ImmutableBTreeMap<>(left.comparator, recordFile);
+                    return new ImmutableBTreeMap<>(left.comparator, keyFile, valueFile);
                 }
                 if (parents.peek().children.size() > 0) {
                     parents.peek().keys.add(branch.getKeys().get(0));
@@ -479,9 +519,8 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         /**
          * Create a parent branch and keep doing it until we get to the root.
          *
-         * @param parents the stack of parents to split into.
+         * @param parents    the stack of parents to split into.
          * @param comparator the key comparator.
-         *
          * @throws IOException if there is an issue writing the tree.
          */
         private void buildBranches(final Stack<BranchPair<K>> parents, final Comparator<K> comparator)
@@ -521,15 +560,15 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         }
 
         private void buildLeaf(final AtomicLong treeSize, final Comparator<K> comparator,
-                                              final List<K> keys, final List<Long> children,
-                                              final BTreeEntry<K, V>[] leftRight, final Iterator<Entry<K, V>> leftIT,
-                                              final Iterator<Entry<K, V>> rightIT) throws IOException {
+                               final List<K> keys, final List<Long> children,
+                               final BTreeEntry<K, V>[] leftRight, final Iterator<Entry<K, V>> leftIT,
+                               final Iterator<Entry<K, V>> rightIT, boolean gc) throws IOException {
 
             assert leftRight.length == 2;
             // One of these iterators will have next!
             boolean hasNext = leftIT.hasNext() || rightIT.hasNext();
 
-            final ImmutableLeaf<K, V> leaf = new ImmutableLeaf<>(comparator);
+            final ImmutableLeaf<K> leaf = new ImmutableLeaf<>(comparator);
 
             // Loop through to a maximum of maxKeysPerNode
             while (hasNext) {
@@ -550,18 +589,24 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     int cmp = comparator.compare(leftRight[0].getKey(), leftRight[1].getKey());
                     // If the left is the same as the right, then we add the right
                     if (cmp == 0) {
-                        /*
-                         * We want to avoid additional comparison, so need to add the key and value directly
-                         * to the end of the list.
-                         */
-                        leaf.getKeys().add(leftRight[1].getKey());
-                        leaf.getValues().add(new Pair<>(leftRight[1].getValue(), leftRight[1].isDeleted()));
-                        // Ensure the right and left entries are set null
-                        leftRight[0] = null;
-                        leftRight[1] = null;
 
-                        // Increment tree size
-                        treeSize.incrementAndGet();
+                        /*
+                         * If we have a deleted value and gc is true, then we don't write anything!
+                         */
+                        if (!gc && !leftRight[1].isDeleted()) {
+                            /*
+                             * We want to avoid additional comparison, so need to add the key and value directly
+                             * to the end of the list.
+                             */
+                            leaf.getKeys().add(leftRight[1].getKey());
+                            leaf.getValues().add(new Pair<>(leftRight[1].getValue(), leftRight[1].isDeleted()));
+                            // Ensure the right and left entries are set null
+                            leftRight[0] = null;
+                            leftRight[1] = null;
+
+                            // Increment tree size
+                            treeSize.incrementAndGet();
+                        }
                     } else if (cmp < 0) {
                         // Left is the lesser entry, so add it to the leaf
                         leaf.getKeys().add(leftRight[0].getKey());
@@ -673,10 +718,10 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
             } else {
                 out.writeInt(value.getKeys().size());
-                for (Pair<V> v : ((ImmutableLeaf<K, V>) value).getValues()) {
+                for (Pair<Object> v : ((ImmutableLeaf<K>) value).getValues()) {
                     out.writeByte('E');
                     out.writeBoolean(v.isDeleted());
-                    valueSerializer.serialize(out, v.getValue());
+                    valueSerializer.serialize(out, (V) v.getValue());
                 }
             }
         }
@@ -701,7 +746,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
                 return new ImmutableBranch<K>(comparator, keys, children);
             }
-            List<Pair<V>> values = new ArrayList<>(valueSize);
+            List<Pair<Object>> values = new ArrayList<>(valueSize);
             for (int i = 0; i < valueSize; i++) {
                 assert in.readByte() == 'E';
                 boolean deleted = in.readBoolean();
@@ -726,7 +771,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final Stack<ImmutableBranch<K>> stack = new Stack<>();
         private final Stack<AtomicInteger> stackPos = new Stack<>();
         private final AtomicInteger leafPos = new AtomicInteger();
-        private ImmutableLeaf<K, V> leaf;
+        private ImmutableLeaf<K> leaf;
 
         private ImmutableBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to, boolean toInclusive) throws IOException {
             this(comparator, from, fromInclusive, to, toInclusive, true);
@@ -767,7 +812,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     advance();
                 }
                 while (leaf != null && excludeDeleted) {
-                    Pair<V> value = leaf.getValues().get(leafPos.get());
+                    Pair<Object> value = leaf.getValues().get(leafPos.get());
                     if (!value.isDeleted()) {
                         break; // break out.
                     }
@@ -795,14 +840,18 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 return null;
             }
             K key = leaf.getKeys().get(leafPos.get());
-            Pair<V> child = leaf.getValues().get(leafPos.getAndIncrement());
+            Pair<Object> child = leaf.getValues().get(leafPos.getAndIncrement());
             try {
                 advance();
+                Object value = child.getValue();
+                if (valueFile != null) {
+                    value = valueFile.get((Long) value);
+                }
+                return new BTreeEntry<>(key, (V) value, child.isDeleted());
             } catch (IOException ex) {
                 // FIXME: Stop using runtime exceptions
                 throw new RuntimeException(ex);
             }
-            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
         }
 
         @SuppressWarnings("unchecked")
@@ -811,9 +860,9 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (ImmutableBranch.class.isAssignableFrom(node.getClass())) {
                 stack.push((ImmutableBranch<K>) node);
                 stackPos.push(new AtomicInteger(1));
-                node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(0));
+                node = keyFile.get(((ImmutableBranch<K>) node).getChildren().get(0));
             }
-            leaf = (ImmutableLeaf<K, V>) node;
+            leaf = (ImmutableLeaf<K>) node;
         }
 
         @SuppressWarnings("unchecked")
@@ -826,14 +875,14 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 K found = node.getKeys().get(pos);
                 // If key is higher than found, then we shift right, otherwise we shift left
                 if (comparator.compare(key, found) >= 0) {
-                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos + 1));
+                    node = keyFile.get(((ImmutableBranch<K>) node).getChildren().get(pos + 1));
                     // Increment the stack position, if we lean right. This is to ensure that we don't repeat.
                     stackPos.peek().getAndIncrement();
                 } else {
-                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos));
+                    node = keyFile.get(((ImmutableBranch<K>) node).getChildren().get(pos));
                 }
             }
-            leaf = (ImmutableLeaf<K, V>) node;
+            leaf = (ImmutableLeaf<K>) node;
         }
 
         @SuppressWarnings("unchecked")
@@ -856,9 +905,9 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
             int pos = stackPos.peek().getAndIncrement(); // get the immediate parent position.
             if (pos < parent.getChildren().size()) {
-                Node<K, ?> child = recordFile.get(parent.getChildren().get(pos));
+                Node<K, ?> child = keyFile.get(parent.getChildren().get(pos));
                 if (Leaf.class.isAssignableFrom(child.getClass())) {
-                    leaf = (ImmutableLeaf<K, V>) child;
+                    leaf = (ImmutableLeaf<K>) child;
                     leafPos.set(0);
                 } else {
                     stack.push((ImmutableBranch<K>) child);
@@ -892,7 +941,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final Stack<ImmutableBranch<K>> stack = new Stack<>();
         private final Stack<AtomicInteger> stackPos = new Stack<>();
         private final AtomicInteger leafPos = new AtomicInteger();
-        private ImmutableLeaf<K, V> leaf;
+        private ImmutableLeaf<K> leaf;
 
         private ReverseImmutableBTreeMapIterator(Comparator<K> comparator, K from, boolean fromInclusive, K to,
                                                  boolean toInclusive) throws IOException {
@@ -929,7 +978,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     return false;
                 }
                 while (leaf != null && excludeDeleted) {
-                    Pair<V> value = leaf.getValues().get(leafPos.get());
+                    Pair<Object> value = leaf.getValues().get(leafPos.get());
                     if (!value.isDeleted()) {
                         break; // break out.
                     }
@@ -959,13 +1008,17 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 return null;
             }
             K key = leaf.getKeys().get(leafPos.get());
-            Pair<V> child = leaf.getValues().get(leafPos.getAndDecrement());
+            Pair<Object> child = leaf.getValues().get(leafPos.getAndDecrement());
             try {
                 advance();
+                Object value = child.getValue();
+                if (valueFile != null) {
+                    value = valueFile.get((Long) value);
+                }
+                return new BTreeEntry<>(key, (V) value, child.isDeleted());
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
-            return new BTreeEntry<>(key, child.getValue(), child.isDeleted());
         }
 
         @SuppressWarnings("unchecked")
@@ -974,9 +1027,9 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (ImmutableBranch.class.isAssignableFrom(node.getClass())) {
                 stack.push((ImmutableBranch<K>) node);
                 stackPos.push(new AtomicInteger(((ImmutableBranch<K>) node).getChildren().size() - 2));
-                node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(((ImmutableBranch<K>) node).getChildren().size() - 1));
+                node = keyFile.get(((ImmutableBranch<K>) node).getChildren().get(((ImmutableBranch<K>) node).getChildren().size() - 1));
             }
-            leaf = (ImmutableLeaf<K, V>) node;
+            leaf = (ImmutableLeaf<K>) node;
             leafPos.set(leaf.getKeys().size() - 1);
         }
 
@@ -990,14 +1043,14 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 K found = node.getKeys().get(pos);
                 // If key is higher than found, then we shift right, otherwise we shift left
                 if (comparator.compare(key, found) >= 0) {
-                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos));
+                    node = keyFile.get(((ImmutableBranch<K>) node).getChildren().get(pos));
                 } else {
-                    node = recordFile.get(((ImmutableBranch<K>) node).getChildren().get(pos - 1));
+                    node = keyFile.get(((ImmutableBranch<K>) node).getChildren().get(pos - 1));
                     // Increment the stack position, if we lean right. This is to ensure that we don't repeat.
                     stackPos.peek().getAndDecrement();
                 }
             }
-            leaf = (ImmutableLeaf<K, V>) node;
+            leaf = (ImmutableLeaf<K>) node;
             leafPos.set(leaf.getKeys().size() - 1);
         }
 
@@ -1018,9 +1071,9 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
             int pos = stackPos.peek().getAndDecrement(); // get the immediate parent position.
             if (pos >= 0) {
-                Node<K, ?> child = recordFile.get(parent.getChildren().get(pos));
+                Node<K, ?> child = keyFile.get(parent.getChildren().get(pos));
                 if (Leaf.class.isAssignableFrom(child.getClass())) {
-                    leaf = (ImmutableLeaf<K, V>) child;
+                    leaf = (ImmutableLeaf<K>) child;
                     leafPos.set(leaf.getKeys().size() - 1);
                 } else {
                     stack.push((ImmutableBranch<K>) child);

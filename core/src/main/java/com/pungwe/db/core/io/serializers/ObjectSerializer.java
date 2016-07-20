@@ -49,8 +49,7 @@ public class ObjectSerializer implements Serializer {
         if (byte[].class.isAssignableFrom(value.getClass())) {
             // Binary!
             out.writeByte(BINARY);
-            out.writeInt(((byte[])value).length);
-            out.write((byte[])value);
+            new ByteSerializer().serialize(out, (byte[])value);
         } else if (value.getClass().isArray()) {
             out.writeByte(ARRAY);
             out.writeInt(Array.getLength(value));
@@ -59,27 +58,27 @@ public class ObjectSerializer implements Serializer {
             }
         } else if (String.class.isAssignableFrom(value.getClass())) {
             out.writeByte(STRING);
-            out.writeUTF((String) value);
+            new StringSerializer().serialize(out, (String)value);
         } else if (Boolean.class.isAssignableFrom(value.getClass())) {
             out.writeByte(BOOLEAN);
             out.writeByte(((Boolean) value) ? 1 : 0);
         } else if (Double.class.isAssignableFrom(value.getClass())) {
             out.writeByte(DECIMAL);
-            out.writeDouble((Double) value);
+            new NumberSerializer<>(Double.class).serialize(out, (Double)value);
         } else if (Float.class.isAssignableFrom(value.getClass())) {
             out.writeByte(DECIMAL);
-            out.writeDouble((Float) value);
+            new NumberSerializer<>(Float.class).serialize(out, (Float)value);
             // FIXME: We can probably store more information about this...
         } else if (BigDecimal.class.isAssignableFrom(value.getClass())) {
             out.writeByte(BIG_DECIMAL);
-            out.writeUTF(((BigDecimal) value).toString());
+            new NumberSerializer<>(BigDecimal.class).serialize(out, (BigDecimal) value);
             // FIXME: We can probably store more information about this...
         } else if (BigInteger.class.isAssignableFrom(value.getClass())) {
             out.writeByte(BIG_NUMBER);
-            out.writeUTF(((BigInteger) value).toString());
+            new NumberSerializer<>(BigInteger.class).serialize(out, (BigInteger) value);
         } else if (Number.class.isAssignableFrom(value.getClass())) {
             out.writeByte(NUMBER);
-            out.writeLong(((Number) value).longValue());
+            new NumberSerializer<>(Long.class).serialize(out, ((Number)value).longValue());
         } else if (Map.class.isAssignableFrom(value.getClass())) {
             out.writeByte(OBJECT);
             out.writeInt(((Map)value).size());
@@ -94,14 +93,8 @@ public class ObjectSerializer implements Serializer {
                 writeEntry(out, it.next());
             }
         } else if (Map.Entry.class.isAssignableFrom(value.getClass())) {
-            out.writeByte(KEY);
-            writeValue(out, ((Map.Entry) value).getKey());
-            out.writeByte(VALUE);
-            writeValue(out, ((Map.Entry) value).getValue());
+            
         } else if (Date.class.isAssignableFrom(value.getClass())) {
-            // We want to write an appropriate date, so for now set this to null and
-            // we will create a special date object to store all the correct and relevant time values.
-            // It will probably need to use joda... But it will certainly be UTC based time stamps
             writeDate(out, (Date) value);
         } else if (Calendar.class.isAssignableFrom(value.getClass())) {
             writeDate(out, (Calendar) value);
@@ -109,7 +102,7 @@ public class ObjectSerializer implements Serializer {
             writeDate(out, (DateTime) value);
         } else if (UUID.class.isAssignableFrom(value.getClass())) {
             out.writeByte(UUID);
-            out.write(UUIDGen.asByteArray((UUID)value));
+            new UUIDSerializer().serialize(out, (UUID)value);
         } else {
             throw new IllegalArgumentException(String.format("%s is not a supported data type",
                     value.getClass().getName()));
@@ -151,31 +144,25 @@ public class ObjectSerializer implements Serializer {
                 return null;
             }
             case STRING: {
-                return in.readUTF(); // return UTF string
+                return new StringSerializer().deserialize(in);
             }
             case NUMBER: {
-                return in.readLong(); // return the long number
+                // FIXME: Use a registry
+                return new NumberSerializer<>(Long.class).deserialize(in);
             }
             // FIXME: We can probably store more information about this...
             case BIG_NUMBER: {
-                String value = in.readUTF();
-                BigInteger bigInt = new BigInteger(value);
-                return bigInt;
+               return new NumberSerializer<>(BigInteger.class).deserialize(in);
             }
             case DECIMAL: {
-                return in.readDouble();
+                return new NumberSerializer<>(Double.class).deserialize(in);
             }
             // FIXME: We can probably store more information about this...
             case BIG_DECIMAL: {
-                String value = in.readUTF();
-                BigDecimal bigDecimal = new BigDecimal(value);
-                return bigDecimal;
+                return new NumberSerializer<>(BigDecimal.class).deserialize(in);
             }
             case BINARY: {
-                int size = in.readInt();
-                byte[] b = new byte[size];
-                in.readFully(b);
-                return b;
+                return new ByteSerializer().deserialize(in);
             }
             case BOOLEAN: {
                 byte b = in.readByte();
