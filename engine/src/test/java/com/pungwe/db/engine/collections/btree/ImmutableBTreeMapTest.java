@@ -440,7 +440,7 @@ public class ImmutableBTreeMapTest {
         File tmp = File.createTempFile("immutable", ".db");
         try {
             // Create a record file for the combined trees
-            RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
+            RecordFile<AbstractBTreeMap.Node<Long, ?>> keyFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
 
@@ -456,7 +456,8 @@ public class ImmutableBTreeMapTest {
             }
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(recordFile, "test", 100, tree1, tree2);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(keyFile, null, "test", 100,
+                    tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
 
@@ -493,7 +494,8 @@ public class ImmutableBTreeMapTest {
             }
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(recordFile, "test", 100, tree1, tree2);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(recordFile, null, "test", 100,
+                    tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
 
@@ -535,7 +537,8 @@ public class ImmutableBTreeMapTest {
             }
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(recordFile, "test", 100, tree1, tree2);
+            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(recordFile, null, "test", 100,
+                    tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
 
@@ -604,7 +607,8 @@ public class ImmutableBTreeMapTest {
             assertEquals(10000, tree2.entrySet().stream().count());
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(recordFile, "test", 100, tree1, tree2);
+            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(recordFile, null,  "test", 100, tree1,
+                    tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
 
