@@ -14,13 +14,15 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Created by ian on 07/07/2016.
+ * Created by ian when 07/07/2016.
  */
 public class BasicRecordFile<E> implements RecordFile<E> {
 
+    protected final AtomicBoolean closed = new AtomicBoolean();
     protected final Serializer<E> serializer;
     protected final File file;
     protected final RandomAccessFile raf;
@@ -37,6 +39,11 @@ public class BasicRecordFile<E> implements RecordFile<E> {
         } else {
             this.writer = new BasicRecordFileWriter(0);
         }
+    }
+
+    @Override
+    public String getPath() {
+        return file.getAbsolutePath();
     }
 
     @Override
@@ -57,6 +64,15 @@ public class BasicRecordFile<E> implements RecordFile<E> {
             this.metaData = new LinkedHashMap<>();
         }
         this.metaData.putAll(metaData);
+    }
+
+    @Override
+    public boolean delete() throws IOException {
+        // Close the tree
+        closed.set(true);
+        // delete the files
+        raf.close();
+        return file.delete();
     }
 
     private Optional<Record> read(FileChannel channel) throws IOException {

@@ -13,6 +13,8 @@
  */
 package com.pungwe.db.engine.collections.btree;
 
+import com.google.common.hash.BloomFilter;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -156,7 +158,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
     @Override
     public Entry<K, V> higherEntry(K key) {
-        Iterator<Entry<K, V>> it = iterator(key, false, null, true);
+        Iterator<Entry<K, V>> it = iterator(key, false, null, false);
         return it.hasNext() ? it.next() : null;
     }
 
@@ -340,6 +342,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
                                                           boolean toInclusive);
 
     protected abstract Node<K,?> rootNode();
+    protected abstract BloomFilter<K> bloomFilter();
 
     public static class BTreeEntry<K,V> implements Entry<K,V> {
 
@@ -402,6 +405,11 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         @Override
         protected Node<K, ?> rootNode() {
             return parent.rootNode();
+        }
+
+        @Override
+        protected BloomFilter<K> bloomFilter() {
+            return parent.bloomFilter();
         }
 
         @SuppressWarnings("unchecked")
@@ -968,7 +976,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
     }
 
-    protected static abstract class Node<K, T> {
+    public static abstract class Node<K, T> {
 
         protected List<K> keys = new ArrayList<>();
         protected Comparator<K> comparator;

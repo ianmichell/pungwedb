@@ -1,5 +1,7 @@
 package com.pungwe.db.engine.collections.btree;
 
+import com.pungwe.db.core.io.serializers.NumberSerializer;
+import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import org.junit.Test;
 
 import java.math.BigDecimal;
@@ -20,7 +22,7 @@ public class BTreeMapTest {
     public void testSplitAndGet() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -37,7 +39,7 @@ public class BTreeMapTest {
     @Test
     public void testSplitAndIterate() throws Exception {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -53,14 +55,14 @@ public class BTreeMapTest {
             assertNotNull(entry);
             assertEquals(new Long(counter.getAndIncrement()), entry.getKey());
         }
-        assertNull(it.next()); // Assert that the value is now null and we don't progress
+        assertNull(it.next()); // Assert when the value is now null and we don't progress
         assertEquals(10000, counter.longValue());
     }
 
     @Test
     public void testSplitAndIterateBackwards() throws Exception {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 10000; i >= 0; i--) {
             assertNotNull(map.put(i, i));
@@ -82,7 +84,7 @@ public class BTreeMapTest {
     @Test
     public void testSplitAndReverseMapIterate() throws Exception {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 10000; i >= 0; i--) {
             assertNotNull(map.put(i, i));
@@ -102,7 +104,7 @@ public class BTreeMapTest {
     @Test
     public void testSplitAndReverseMapIterateBackwards() throws Exception {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -127,7 +129,7 @@ public class BTreeMapTest {
     public void testSubMapGet() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -146,7 +148,7 @@ public class BTreeMapTest {
     public void testSubMapGetExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -169,7 +171,7 @@ public class BTreeMapTest {
     public void testSubMapGetFromExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -192,7 +194,7 @@ public class BTreeMapTest {
     public void testSubMapGetToExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -219,7 +221,7 @@ public class BTreeMapTest {
     public void testSubMapIterator() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -240,7 +242,7 @@ public class BTreeMapTest {
     public void testSubMapIteratorExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -261,7 +263,7 @@ public class BTreeMapTest {
     public void testSubMapIteratorFromExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -282,7 +284,7 @@ public class BTreeMapTest {
     public void testSubMapIteratorToExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -307,7 +309,7 @@ public class BTreeMapTest {
     public void testSubMapReverseIterator() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -328,7 +330,7 @@ public class BTreeMapTest {
     public void testSubMapReverseIteratorExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -349,7 +351,7 @@ public class BTreeMapTest {
     public void testSubMapReverseIteratorFromExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -370,7 +372,7 @@ public class BTreeMapTest {
     public void testSubMapReverseIteratorToExclusive() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -395,7 +397,7 @@ public class BTreeMapTest {
     @Test
     public void testArbitraryKeys() throws Exception {
 
-        BTreeMap<Object, Object> map = new BTreeMap<>((o1, o2) -> {
+        BTreeMap<Object, Object> map = new BTreeMap<>(new ObjectSerializer(), (o1, o2) -> {
             if (o1 == null || o2 == null) {
                 throw new IllegalArgumentException("Cannot contain null keys");
             }

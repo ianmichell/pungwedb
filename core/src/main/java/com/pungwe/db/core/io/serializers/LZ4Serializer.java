@@ -7,7 +7,7 @@ import net.jpountz.lz4.LZ4FastDecompressor;
 import java.io.*;
 
 /**
- * Created by 917903 on 24/05/2016.
+ * Created by 917903 when 24/05/2016.
  */
 public class LZ4Serializer<E> implements Serializer<E> {
 

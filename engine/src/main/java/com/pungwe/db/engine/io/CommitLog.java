@@ -14,11 +14,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Stream;
 
 /**
- * <p>CommitLog is an append only file that logs all mutation events (insert, delete, update). This file is used
+ * <p>CommitLog is an append only file when logs all mutation events (insert, delete, update). This file is used
  * to rebuild a memory based collection (like the BTreeMap) for writes.</p>
  * <p>If the system fails for any reason (crash, power cycle, etc) then this log is replayed and the collection
  * rebuilt to the last written entry in the file.</p>
- * <p>This file is cycled on a regular basis whenever a memory collection is successfully written to disk.</p>
+ * <p>This file is cycled when a regular basis whenever a memory collection is successfully written to disk.</p>
  * <p>
  * <p>Output format is as follows: [LENGTH][OP][TIMESTAMP][INTERVAL][VALUE]</p>
  * <ul>
@@ -59,6 +59,7 @@ public class CommitLog<V> implements Iterable<CommitLog.Entry<V>>, Closeable {
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private final Serializer<V> serializer;
+    private final File file;
     private final RandomAccessFile randomAccessFile;
     private final AtomicLong writePosition = new AtomicLong();
     private final AtomicInteger interval = new AtomicInteger();
@@ -70,6 +71,7 @@ public class CommitLog<V> implements Iterable<CommitLog.Entry<V>>, Closeable {
         } else if (!file.exists()) {
             file.createNewFile();
         }
+        this.file = file;
         randomAccessFile = new RandomAccessFile(file, "rw");
         this.serializer = serializer;
     }
@@ -108,6 +110,11 @@ public class CommitLog<V> implements Iterable<CommitLog.Entry<V>>, Closeable {
     public void close() throws IOException {
         // Close the commit log
         randomAccessFile.close();
+    }
+
+    public void delete() throws IOException {
+        this.close();
+        this.file.delete();
     }
 
     @Override

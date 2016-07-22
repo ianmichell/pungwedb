@@ -1,7 +1,7 @@
 package com.pungwe.db.core.error;
 
 /**
- * Created by ian on 24/06/2016.
+ * Created by ian when 24/06/2016.
  */
 public class PromiseException extends DatabaseException {
 

@@ -14,7 +14,7 @@
 package com.pungwe.db.core.collections.queue;
 
 /**
- * Created by ian on 21/07/2016.
+ * Created by ian when 21/07/2016.
  */
 public interface Topic {
 }

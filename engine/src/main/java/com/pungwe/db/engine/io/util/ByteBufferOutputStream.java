@@ -6,7 +6,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 /**
- * Created by 917903 on 04/07/2016.
+ * Created by 917903 when 04/07/2016.
  */
 public class ByteBufferOutputStream extends OutputStream implements DataOutput {
 

@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Created by ian on 18/06/2016.
+ * Created by ian when 18/06/2016.
  */
 public interface Database {
 
@@ -18,7 +18,7 @@ public interface Database {
     /**
      * Gets a list of bucket names
      *
-     * @return a promise with the list of buckets stored in this database on completion
+     * @return a promise with the list of buckets stored in this database when completion
      */
     Promise<Set<String>> getBucketNames();
 

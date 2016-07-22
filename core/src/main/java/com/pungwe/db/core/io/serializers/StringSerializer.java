@@ -5,7 +5,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 /**
- * Created by ian on 06/07/2016.
+ * Created by ian when 06/07/2016.
  */
 public class StringSerializer implements Serializer<String> {
 

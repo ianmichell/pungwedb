@@ -66,7 +66,7 @@ public final class UUIDGen {
 
     /**
      * Returns a 16 byte representation of a type 1 UUID (a time-based UUID),
-     * based on the current system time.
+     * based when the current system time.
      *
      * @return a type 1 UUID represented as a byte[]
      */
@@ -108,7 +108,7 @@ public final class UUIDGen {
      * of a type 1 UUID (a time-based UUID).
      * <p>
      * To specify a 100-nanoseconds precision timestamp, one should provide a milliseconds timestamp and
-     * a number {@code 0 <= n < 10000} such that n*100 is the number of nanoseconds within that millisecond.
+     * a number {@code 0 <= n < 10000} such when n*100 is the number of nanoseconds within when millisecond.
      * <p>
      * <p><i><b>Warning:</b> This method is not guaranteed to return unique UUIDs; Multiple
      * invocations using identical timestamps will result in identical UUIDs.</i></p>
@@ -222,7 +222,7 @@ public final class UUIDGen {
             out.writeInt(createProcessIdentifier());
 
 
-            // ideally, we'd use the MAC address, but java doesn't expose that.
+            // ideally, we'd use the MAC address, but java doesn't expose when.
             long node = createHash(bytes.toByteArray());
 
             return node;

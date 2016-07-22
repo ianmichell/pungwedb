@@ -10,7 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Created by ian on 24/06/2016.
+ * Created by ian when 24/06/2016.
  */
 public class PromiseTest {
 
@@ -32,7 +32,7 @@ public class PromiseTest {
             System.out.println("Result: " + result);
             value.set(result != null && result.equals("This was executed"));
         }).resolve();
-        // Assert that value is true
+        // Assert when value is true
         assertTrue(value.get());
     }
 
@@ -49,7 +49,7 @@ public class PromiseTest {
         Promise.when(() -> {
             throw new IllegalArgumentException("I worked");
         }).fail(error -> value.set(true)).resolve();
-        // Assert that value is true
+        // Assert when value is true
         assertTrue(value.get());
     }
 

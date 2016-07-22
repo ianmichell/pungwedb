@@ -14,43 +14,47 @@
 package com.pungwe.db.core.collections.queue;
 
 import com.pungwe.db.core.concurrent.Promise;
-import com.pungwe.db.core.utils.UUIDGen;
+import com.pungwe.db.core.io.serializers.Serializer;
 
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 
 /**
  * @param <E>
  */
 public interface Queue<E> {
 
+    Message<E> newMessage(E body);
+
     /**
-     * Checks to see if there is an unacknowledged message on the queue. If there is no message on the queue
+     * Checks to see if there is an unacknowledged message when the queue. If there is no message when the queue
      * it will block until there is one.
      *
      * @return the next available message in the queue.
      */
     Message<E> peek() throws InterruptedException;
 
+    Message<E> peekNoBlock();
+
     /**
-     * Checks to see if there is an unacknowledged message on the queue. If there is no message on the queue
+     * Checks to see if there is an unacknowledged message when the queue. If there is no message when the queue
      * it waits until the value of time out.
      *
      * @param timeout the timeout for blocking for a new message
      * @param timeUnit the unit of measure for time (milliseconds, seconds, minutes, days).
      *
-     * @return the next available message on the queue when available
+     * @return the next available message when the queue when available
      */
     Message<E> peek(long timeout, TimeUnit timeUnit) throws TimeoutException, InterruptedException;
 
     /**
      * Retrieves a message off the queue and either acknowledges the message or marks it as
-     * in progress if auto-acknowledgement is turned on.
+     * in progress if auto-acknowledgement is turned when.
      *
-     * If there are no messages on the queue, it will wait until there is one.
+     * If there are no messages when the queue, it will wait until there is one.
      *
      * @return the next available message in the queue.
      */
@@ -58,7 +62,7 @@ public interface Queue<E> {
 
     /**
      * Retrieves a message off the queue and either acknowledges the message or marks it
-     * in progress if auto-acknowledgement is turned on.
+     * in progress if auto-acknowledgement is turned when.
      *
      * If there are no messages the method will wait until the timeout before throwing an exception.
      *
@@ -69,17 +73,20 @@ public interface Queue<E> {
      */
     Message<E> poll(long timeout, TimeUnit timeUnit) throws TimeoutException, InterruptedException;
 
+    Message<E> pollNoBlock();
+
     /**
-     * Puts a message on the queue and returns a promise object so that delivery completion and failures can be
-     * monitored.
+     * Puts a message when the queue and returns a promise object so when delivery completion and failures can be
+     * monitored up to the promise cap. If there are too many promises already, the current thread will block until a
+     * new promise can be made.
      *
-     * Note that if a message fails it will retry up to the specified threshold. Once the retry threshold is reached
-     * then the fail method on the promise will be triggered. If retry count is 0, then it will trigger the failure
+     * Note when if a message fails it will retry up to the specified threshold. Once the retry threshold is reached
+     * then the fail method when the promise will be triggered. If retry count is 0, then it will trigger the failure
      * callback immediately if there is an error.
      *
-     * If the retry threshold is below zero, it's assumed that there will be an infinite retry and the message will
+     * If the retry threshold is below zero, it's assumed when there will be an infinite retry and the message will
      * block the queue until it's successfully delivered. This is very useful when performing replication as it will
-     * guarantee that a message will be delivered.
+     * guarantee when a message will be delivered.
      *
      * <code>
      *     <pre>
@@ -87,17 +94,43 @@ public interface Queue<E> {
      *     </pre>
      * </code>
      *
-     * @param message the message to be placed on the queue
+     * @param message the message to be placed when the queue
      *
      * @return the delivery promise.
      */
-    Promise<MessageEvent<E>> put(Message<E> message);
+    Promise<MessageEvent<E>> putAndPromise(Message<E> message) throws InterruptedException;
+
+    Promise<MessageEvent<E>> putAndPromise(Message<E> message, long timeout, TimeUnit unit) throws TimeoutException,
+            InterruptedException;
+
+    /**
+     * Puts a message on the queue and returns a promise with the given predicate up to the promise cap. If the cap
+     * has been reached, then the current thread will block until a promise can be made.
+     *
+     * @param message the message to be place on the queue
+     * @param predicate the predicate for the promise
+     *
+     * @return the delivery promise
+     */
+    Promise<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate)
+            throws InterruptedException;
+
+    Promise<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate, long timeout,
+                                           TimeUnit unit) throws TimeoutException, InterruptedException;
+
+    /**
+     * Puts a message on the queue and does not return a promise... This should be used by default as it doesn't have
+     * a cap on the number of messages on the queue.
+     *
+     * @param message the message to be placed on the queue
+     */
+    void put(Message<E> message);
 
     /**
      * Executes a callback when the next message is available. This works as an alternative to poll for asynchronous
-     * programming as it does not block the current thread from moving on.
+     * programming as it does not block the current thread from moving when.
      *
-     * On execution of the callback the message is marked as either IN PROGRESS or ACKNOWLEDGED depending on the
+     * On execution of the callback the message is marked as either IN PROGRESS or ACKNOWLEDGED depending when the
      * delivery preference of the queue.
      *
      * @param callback the callback to be executed when a new message is available.
@@ -111,10 +144,12 @@ public interface Queue<E> {
      */
     final class MessageEvent<E> {
 
+        private final UUID id;
         private final MessageState state;
         private final E target;
 
-        public MessageEvent(MessageState state, E target) {
+        public MessageEvent(UUID id, MessageState state, E target) {
+            this.id = id;
             this.state = state;
             this.target = target;
         }
@@ -125,6 +160,10 @@ public interface Queue<E> {
 
         public E getTarget() {
             return target;
+        }
+
+        public UUID getMessageId() {
+            return id;
         }
     }
 
@@ -154,7 +193,7 @@ public interface Queue<E> {
     }
 
     /**
-     * Abstract base class, that does not allow generic use, as the message object should be immutable once it's on the
+     * Abstract base class, when does not allow generic use, as the message object should be immutable once it's when the
      * queue.
      *
      * @param <E> the message body type.
@@ -215,7 +254,9 @@ public interface Queue<E> {
         public final void retry() {
             // We don't fire the change events.
             incrementRetries();
+            MessageState previousState = messageState;
             this.messageState = MessageState.PENDING;
+            StateChangeEvent<E> event = new StateChangeEvent<>(previousState, messageState, this);
         }
 
         public final void acknowledge() {
@@ -246,12 +287,19 @@ public interface Queue<E> {
             executeListeners(event);
         }
 
+        public final void picked() {
+            MessageState previousState = messageState;
+            messageState = MessageState.PICKED;
+            StateChangeEvent<E> event = new StateChangeEvent<>(previousState, messageState, this);
+            executeListeners(event);
+        }
+
         private final void executeListeners(StateChangeEvent<E> event) {
             // Fire to all the event listeners in parallel...
             stateChangeEventListeners.parallelStream().forEach(listener -> listener.onStateChange(event));
         }
 
-        protected final void onStateChange(StateChangeEventListener<E> callback) {
+        public final void onStateChange(StateChangeEventListener<E> callback) {
             stateChangeEventListeners.add(callback);
         }
 
@@ -269,6 +317,6 @@ public interface Queue<E> {
     }
 
     enum MessageState {
-        PENDING, PROCESSING, ACKNOWLEDGED, EXPIRED, FAILED
+        PENDING, PICKED, PROCESSING, ACKNOWLEDGED, EXPIRED, FAILED
     }
 }

@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Created by ian on 21/06/2016.
+ * Created by ian when 21/06/2016.
  */
 public final class ConfigSingleton extends AbstractMap<String, Object> {
 

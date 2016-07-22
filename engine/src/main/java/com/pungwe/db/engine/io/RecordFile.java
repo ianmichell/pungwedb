@@ -7,7 +7,7 @@ import java.util.Map;
 
 // FIXME: Add Meta Data
 /**
- * Created by 917903 on 06/07/2016.
+ * Created by 917903 when 06/07/2016.
  */
 public interface RecordFile<E> extends Iterable<E> {
 
@@ -15,6 +15,9 @@ public interface RecordFile<E> extends Iterable<E> {
     Reader<E> reader() throws IOException;
     Reader<E> reader(long position) throws IOException;
     Writer<E> writer() throws IOException;
+
+    String getPath();
+    boolean delete() throws IOException;
 
     void setMetaData(Map<String, Object> metaData) throws IOException;
     Map<String, Object> getMetaData() throws IOException;

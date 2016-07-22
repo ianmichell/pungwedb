@@ -33,14 +33,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
 /**
- * Created by ian on 11/07/2016.
+ * Created by ian when 11/07/2016.
  */
 public class ImmutableBTreeMapTest {
 
     @Test
     public void writeAndLoad() throws IOException {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 100);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 100);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -71,7 +71,7 @@ public class ImmutableBTreeMapTest {
     @Test
     public void testIterateBackwards() throws Exception {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 100);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 100);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -104,7 +104,7 @@ public class ImmutableBTreeMapTest {
     @Test
     public void testIterate() throws Exception {
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 100);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 100);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -142,7 +142,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapIterator() throws Exception {
 
         // Add a million records to map
-        BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+        BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
         long start = System.nanoTime();
         for (long i = 0; i < 10000; i++) {
             assertNotNull(map.put(i, i));
@@ -183,7 +183,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -219,7 +219,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -256,7 +256,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -297,7 +297,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -333,7 +333,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -370,7 +370,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -407,7 +407,7 @@ public class ImmutableBTreeMapTest {
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             // Add a million records to map
-            BTreeMap<Long, Long> map = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> map = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             long start = System.nanoTime();
             for (long i = 0; i < 10000; i++) {
                 assertNotNull(map.put(i, i));
@@ -445,12 +445,12 @@ public class ImmutableBTreeMapTest {
                             new NumberSerializer<>(Long.class)));
 
             // Tree 1
-            BTreeMap<Long, Long> tree1 = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> tree1 = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             for (long i = 0; i < 10000; i++) {
                 tree1.put(i, i);
             }
             // Tree 2
-            BTreeMap<Long, Long> tree2 = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> tree2 = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             for (long i = 10000; i < 20000; i++) {
                 tree2.put(i, i);
             }
@@ -483,12 +483,12 @@ public class ImmutableBTreeMapTest {
                             new NumberSerializer<>(Long.class)));
 
             // Tree 1
-            BTreeMap<Long, Long> tree1 = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> tree1 = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             for (long i = 0; i < 20000; i+=2) {
                 tree1.put(i, i);
             }
             // Tree 2
-            BTreeMap<Long, Long> tree2 = new BTreeMap<>(Long::compareTo, 10);
+            BTreeMap<Long, Long> tree2 = new BTreeMap<>(new NumberSerializer<>(Long.class), Long::compareTo, 10);
             for (long i = 1; i < 20000; i+=2) {
                 tree2.put(i, i);
             }
@@ -521,7 +521,7 @@ public class ImmutableBTreeMapTest {
 
             List<UUID> guids = new ArrayList<>();
             // Tree 1
-            BTreeMap<UUID, UUID> tree1 = new BTreeMap<>(UUID::compareTo, 10);
+            BTreeMap<UUID, UUID> tree1 = new BTreeMap<>(new UUIDSerializer(), UUID::compareTo, 10);
             for (long i = 0; i < 10000; i++) {
                 UUID uuid = UUIDGen.getTimeUUID();
                 tree1.put(uuid, uuid);
@@ -529,7 +529,7 @@ public class ImmutableBTreeMapTest {
             }
 
             // Tree 2
-            BTreeMap<UUID, UUID> tree2 = new BTreeMap<>(UUID::compareTo, 10);
+            BTreeMap<UUID, UUID> tree2 = new BTreeMap<>(new UUIDSerializer(), UUID::compareTo, 10);
             for (long i = 0; i < 10000; i++) {
                 UUID uuid = UUIDGen.getTimeUUID();
                 tree2.put(uuid, uuid);
@@ -570,7 +570,7 @@ public class ImmutableBTreeMapTest {
             ExecutorService executor = Executors.newFixedThreadPool(8);
             final List<Callable<UUID>> threads = new LinkedList<>();
             // Tree 1
-            final BTreeMap<UUID, UUID> tree1 = new BTreeMap<>(UUID::compareTo, 10);
+            final BTreeMap<UUID, UUID> tree1 = new BTreeMap<>(new UUIDSerializer(), UUID::compareTo, 10);
             for (long i = 0; i < 10000; i++) {
                 threads.add(() -> {
                     UUID uuid = UUIDGen.getTimeUUID();
@@ -581,7 +581,7 @@ public class ImmutableBTreeMapTest {
             }
 
             // Tree 2
-            final BTreeMap<UUID, UUID> tree2 = new BTreeMap<>(UUID::compareTo, 10);
+            final BTreeMap<UUID, UUID> tree2 = new BTreeMap<>(new UUIDSerializer(), UUID::compareTo, 10);
             for (long i = 0; i < 10000; i++) {
                 threads.add(() -> {
                     UUID uuid = UUIDGen.getTimeUUID();

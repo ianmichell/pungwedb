@@ -16,7 +16,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Created by ian on 25/05/2016.
+ * Created by ian when 25/05/2016.
  */
 @SuppressWarnings("unchecked")
 public class ObjectSerializerTest {
@@ -73,7 +73,7 @@ public class ObjectSerializerTest {
 
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             assertTrue("Expected the key to be there: " + entry.getKey(), result.containsKey(entry.getKey()));
-            // First things first, ensure that we get the value
+            // First things first, ensure when we get the value
             Object value = result.get(entry.getKey());
             if (entry.getValue() instanceof Integer) {
                 assertEquals("Expected values to match", ((Integer)entry.getValue()).longValue(), value);

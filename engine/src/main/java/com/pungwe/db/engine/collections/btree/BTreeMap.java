@@ -13,6 +13,15 @@
  */
 package com.pungwe.db.engine.collections.btree;
 
+import com.google.common.hash.BloomFilter;
+import com.google.common.hash.Funnel;
+import com.google.common.hash.PrimitiveSink;
+import com.pungwe.db.core.error.DatabaseRuntimeException;
+import com.pungwe.db.core.io.serializers.Serializer;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -24,11 +33,30 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     private final int maxKeysPerNode;
     private Node<K, ?> root;
     private final AtomicLong size = new AtomicLong();
+    private final BloomFilter<K> bloomFilter;
+    private final Serializer<K> keySerializer;
 
-    public BTreeMap(Comparator<K> comparator, int maxKeysPerNode) {
+    @SuppressWarnings("unchecked")
+    public BTreeMap(Serializer<K> keySerializer, Comparator<K> comparator, int maxKeysPerNode) {
         super(comparator);
         this.maxKeysPerNode = maxKeysPerNode;
         root = new BTreeLeaf<>(comparator);
+        this.keySerializer = keySerializer;
+        bloomFilter = BloomFilter.create((from, into) -> {
+            try {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                DataOutputStream out = new DataOutputStream(bytes);
+                BTreeMap.this.keySerializer.serialize(out, from);
+                into.putBytes(bytes.toByteArray());
+            } catch (IOException ex) {
+                throw new DatabaseRuntimeException(ex);
+            }
+        }, maxKeysPerNode, 0.01);
+    }
+
+    @Override
+    protected BloomFilter<K> bloomFilter() {
+        return this.bloomFilter;
     }
 
     @Override
@@ -60,6 +88,9 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 newValue = false;
             }
             leaf.put(entry.getKey(), new Pair<>(entry.getValue(), false));
+            // Add to the bloom filter
+            bloomFilter.put(entry.getKey());
+            // Check and split
             checkAndSplit(stack);
             if (newValue) {
                 size.getAndIncrement();

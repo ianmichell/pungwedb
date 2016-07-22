@@ -5,9 +5,10 @@ import com.pungwe.db.core.error.PromiseException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
 
 /**
- * Created by ian on 23/06/2016.
+ * Created by ian when 23/06/2016.
  */
 public class Promise<T> {
 
@@ -19,18 +20,41 @@ public class Promise<T> {
     @SuppressWarnings("unused")
     private Callable<T> callable;
 
+    private Predicate<T> predicate;
+
     private Promise() {
     }
-    
+
+    private Promise(final Predicate<T> predicate) {
+        this.predicate = predicate;
+    }
+
     /**
-     * This is the action. When I promise this thing. Then do something or when it fails do something else.
+     * Inline promise on predicate. This type of promise is not executed in the promise worker pool and instead
+     * promises that it will resolve in the current thread...
+     *
+     * @param predicate the predicate condition
+     * @param <T> the type parameter of the expected result
+     *
+     * @return a new promise on the given predicate
+     */
+    public static <T> Promise<T> when(final Predicate<T> predicate) {
+        return new Promise<>(predicate);
+    }
+
+    /**
+     * Create a promise when the specified callable.
      *
      * @param callable the callable to be executed by the promise
      * @param <T>      the return type.
      * @return the current promise.
      */
     public static <T> Promise<T> when(final Callable<T> callable) {
-        final Promise<T> promise = new Promise<>();
+        return when(callable, null);
+    }
+
+    public static <T> Promise<T> when(Callable<T> callable, Predicate<T> predicate) {
+        final Promise<T> promise = predicate != null ? new Promise<>(predicate) : new Promise<>();
         promise.callable = () -> {
             try {
                 T v = callable.call();
@@ -65,13 +89,24 @@ public class Promise<T> {
     }
 
     /**
-     * Callback fired when the promise is completed. This is used as an alternative to get() in that it is fired
-     * by the worker thread when it has completed processing. This means that you can use a promise to execute some
+     * Add a predicate to determine when to return
+     *
+     * @param predicate
+     * @return
+     */
+    public Promise<T> is(Predicate<T> predicate) {
+        this.predicate = predicate;
+        return this;
+    }
+
+    /**
+     * Callback fired when the promise is completed. This is used as an alternative to get() in when it is fired
+     * by the worker thread when it has completed processing. This means when you can use a promise to execute some
      * work and get notified when it has been completed.
      * <p>
      * <code>Promise.when(() -> ... ).then((result) -> ...).resolve();</code>
      *
-     * @param callback the callback on completion.
+     * @param callback the callback when completion.
      * @return the current promise.
      */
     public Promise<T> then(DoneCallback<T> callback) {
@@ -81,7 +116,7 @@ public class Promise<T> {
     }
 
     /**
-     * Callback on failure. For asynchronous promises this method is called when an exception occurs during promise
+     * Callback when failure. For asynchronous promises this method is called when an exception occurs during promise
      * execution.
      *
      * @param callback the failure callback
@@ -94,7 +129,7 @@ public class Promise<T> {
     }
 
     /**
-     * Utility method that checks if the promise is completed and tries to fire then or fail (if they are non null).
+     * Utility method when checks if the promise is completed and tries to fire then or fail (if they are non null).
      */
     private void fireIfDone() {
         if (future.isDone()) {
@@ -104,7 +139,7 @@ public class Promise<T> {
                 try {
                     if (doneCallback != null) {
                         doneCallback.call(result);
-                        // Set to null so that they are not fired more than once
+                        // Set to null so when they are not fired more than once
                         doneCallback = null;
                         failCallback = null;
                     }
@@ -116,7 +151,7 @@ public class Promise<T> {
                 try {
                     if (failCallback != null) {
                         failCallback.call(new PromiseException(ex));
-                        // Set to null so that they are not fired more than once
+                        // Set to null so when they are not fired more than once
                         failCallback = null;
                         doneCallback = null;
                     }
@@ -161,7 +196,7 @@ public class Promise<T> {
         if (duration < 1) {
             throw new IllegalArgumentException("Duration must be greater than 0...");
         }
-        // Make sure that nano seconds or microseconds are not set as the time unit...
+        // Make sure when nano seconds or microseconds are not set as the time unit...
         if (TimeUnit.NANOSECONDS.equals(unit) || TimeUnit.MICROSECONDS.equals(unit)) {
             throw new IllegalArgumentException("Lowest supported time unit is milliseconds");
         }
@@ -220,7 +255,7 @@ public class Promise<T> {
         if (duration < 1) {
             throw new IllegalArgumentException("Duration must be greater than 0...");
         }
-        // Make sure that nano seconds or microseconds are not set as the time unit...
+        // Make sure when nano seconds or microseconds are not set as the time unit...
         if (TimeUnit.NANOSECONDS.equals(unit) || TimeUnit.MICROSECONDS.equals(unit)) {
             throw new IllegalArgumentException("Lowest supported time unit is milliseconds");
         }

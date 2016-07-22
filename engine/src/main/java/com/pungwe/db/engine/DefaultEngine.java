@@ -9,7 +9,7 @@ import com.pungwe.db.core.types.Engine;
 import java.util.Map;
 
 /**
- * Created by ian on 07/07/2016.
+ * Created by ian when 07/07/2016.
  */
 public class DefaultEngine implements Engine {
 

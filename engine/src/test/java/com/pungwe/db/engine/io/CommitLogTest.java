@@ -16,7 +16,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
 /**
- * Created by 917903 on 20/07/2016.
+ * Created by 917903 when 20/07/2016.
  */
 public class CommitLogTest {
 
