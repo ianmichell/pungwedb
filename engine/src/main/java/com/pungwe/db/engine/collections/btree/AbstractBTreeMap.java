@@ -19,12 +19,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Created by ian on 07/07/2016.
+ * AbstractBTreeMap contains base methods and inner classes for a working  B+Tree.
+ *
+ * @param <K> Key type - must have a corresponding serializer
+ * @param <V> Value type - must have a corresponding serializer
  */
 public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,V> {
 
-    // FIXME: Do we need levels?
-    private final AtomicInteger levels = new AtomicInteger();
     protected final Comparator<K> comparator;
 
     protected AbstractBTreeMap(Comparator<K> comparator) {
@@ -910,15 +911,8 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         @Override
         public <T> T[] toArray(T[] a) {
-            if (a.length >= map.entrySet().size()) {
-                final AtomicInteger i = new AtomicInteger();
-                map.entrySet().stream().forEach((e) -> {
-                    a[i.getAndIncrement()] = (T) e;
-                });
-            }
-            return (T[]) map.entrySet().stream().map((e) -> {
-                return e;
-            }).toArray();
+            // FIXME:
+            return null;
         }
 
         @Override

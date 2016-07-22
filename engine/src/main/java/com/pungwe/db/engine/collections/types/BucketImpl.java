@@ -20,7 +20,6 @@ import com.pungwe.db.core.result.InsertResult;
 import com.pungwe.db.core.result.QueryResult;
 import com.pungwe.db.core.result.UpdateResult;
 import com.pungwe.db.core.types.Bucket;
-import com.pungwe.db.engine.io.RecordDirectory;
 
 import java.util.List;
 import java.util.Map;
@@ -47,11 +46,11 @@ import java.util.Map;
  */
 public class BucketImpl<T> implements Bucket<T> {
 
-    protected BucketImpl(RecordDirectory directory, String name, Map<String, Object> metaData) {
+    protected BucketImpl(String name, Map<String, Object> metaData) {
 
     }
 
-    public BucketImpl<T> getInstance(RecordDirectory recordDirectory, String name) {
+    public BucketImpl<T> getInstance(String name) {
         return null;
     }
 

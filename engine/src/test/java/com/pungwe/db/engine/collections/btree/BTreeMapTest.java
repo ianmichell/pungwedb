@@ -14,9 +14,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
-/**
- * Created by ian on 08/07/2016.
- */
 public class BTreeMapTest {
 
     @Test
@@ -29,11 +26,9 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        final AtomicInteger counter = new AtomicInteger();
         for (long i = 0; i < 10000; i++) {
             assertEquals(new Long(i), map.get(i));
         }
@@ -48,7 +43,6 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
@@ -72,7 +66,6 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
@@ -95,14 +88,11 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
         final AtomicInteger counter = new AtomicInteger(10000);
-        Iterator<Map.Entry<Long, Long>> it = map.descendingMap().entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Long, Long> entry = it.next();
+        for (Map.Entry<Long, Long> entry : map.descendingMap().entrySet()) {
             assertNotNull(entry);
             assertEquals(new Long(counter.getAndDecrement()), entry.getKey());
         }
@@ -118,14 +108,11 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
         final AtomicInteger counter = new AtomicInteger(0);
-        Iterator<Map.Entry<Long, Long>> it = map.descendingMap().descendingMap().entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Long, Long> entry = it.next();
+        for (Map.Entry<Long, Long> entry : map.descendingMap().descendingMap().entrySet()) {
             assertNotNull(entry);
             assertEquals(new Long(counter.getAndIncrement()), entry.getKey());
         }
@@ -146,11 +133,10 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, true, 513l, true);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, true, 513L, true);
         for (long i = 59; i < 514; i++) {
             assertEquals(new Long(i), sub.get(i));
         }
@@ -166,11 +152,10 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, false, 513l, false);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, false, 513L, false);
         for (long i = 59; i < 514; i++) {
             if (i == 59 || i == 513) {
                 assertNull(sub.get(i));
@@ -190,11 +175,10 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, false, 513l, true);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, false, 513L, true);
         for (long i = 59; i < 514; i++) {
             if (i == 59) {
                 assertNull(sub.get(i));
@@ -214,11 +198,10 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, true, 513l, false);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, true, 513L, false);
         for (long i = 59; i < 514; i++) {
             if (i == 513) {
                 assertNull(sub.get(i));
@@ -242,17 +225,15 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, true, 513l, true);
-        AtomicLong counter = new AtomicLong(59l);
-        Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, true, 513L, true);
+        AtomicLong counter = new AtomicLong(59L);
+        for (Map.Entry<Long, Long> longLongEntry : sub.entrySet()) {
+            assertEquals(new Long(counter.getAndIncrement()), longLongEntry.getKey());
         }
-        assertEquals(514l, counter.get());
+        assertEquals(514L, counter.get());
     }
 
     @Test
@@ -265,17 +246,15 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, false, 513l, false);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, false, 513L, false);
         AtomicLong counter = new AtomicLong(60);
-        Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.entrySet()) {
+            assertEquals(new Long(counter.getAndIncrement()), longLongEntry.getKey());
         }
-        assertEquals(513l, counter.get());
+        assertEquals(513L, counter.get());
     }
 
     @Test
@@ -288,17 +267,15 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, false, 513l, true);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, false, 513L, true);
         AtomicLong counter = new AtomicLong(60);
-        Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.entrySet()) {
+            assertEquals(new Long(counter.getAndIncrement()), longLongEntry.getKey());
         }
-        assertEquals(514l, counter.get());
+        assertEquals(514L, counter.get());
     }
 
     @Test
@@ -311,17 +288,15 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, true, 513l, false);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, true, 513L, false);
         AtomicLong counter = new AtomicLong(59);
-        Iterator<Map.Entry<Long, Long>> it = sub.entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndIncrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.entrySet()) {
+            assertEquals(new Long(counter.getAndIncrement()), longLongEntry.getKey());
         }
-        assertEquals(513l, counter.get());
+        assertEquals(513L, counter.get());
     }
 
     //###########################################################################################
@@ -338,15 +313,13 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, true, 513l, true);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, true, 513L, true);
         AtomicLong counter = new AtomicLong(513);
-        Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.descendingMap().entrySet()) {
+            assertEquals(new Long(counter.getAndDecrement()), longLongEntry.getKey());
         }
         assertEquals(58, counter.get());
     }
@@ -361,15 +334,13 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, false, 513l, false);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, false, 513L, false);
         AtomicLong counter = new AtomicLong(512);
-        Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.descendingMap().entrySet()) {
+            assertEquals(new Long(counter.getAndDecrement()), longLongEntry.getKey());
         }
         assertEquals(59, counter.get());
     }
@@ -384,15 +355,13 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, false, 513l, true);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, false, 513L, true);
         AtomicLong counter = new AtomicLong(513);
-        Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.descendingMap().entrySet()) {
+            assertEquals(new Long(counter.getAndDecrement()), longLongEntry.getKey());
         }
         assertEquals(59, counter.get());
     }
@@ -407,15 +376,13 @@ public class BTreeMapTest {
             assertNotNull(map.put(i, i));
         }
         long end = System.nanoTime();
-        long time = end - start;
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         // Iterate a million records
-        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59l, true, 513l, false);
+        ConcurrentNavigableMap<Long, Long> sub = map.subMap(59L, true, 513L, false);
         AtomicLong counter = new AtomicLong(512);
-        Iterator<Map.Entry<Long, Long>> it = sub.descendingMap().entrySet().iterator();
-        while (it.hasNext()) {
-            assertEquals(new Long(counter.getAndDecrement()), it.next().getKey());
+        for (Map.Entry<Long, Long> longLongEntry : sub.descendingMap().entrySet()) {
+            assertEquals(new Long(counter.getAndDecrement()), longLongEntry.getKey());
         }
         assertEquals(58, counter.get());
     }

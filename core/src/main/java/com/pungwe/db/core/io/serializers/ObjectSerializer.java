@@ -16,7 +16,7 @@ import java.util.*;
 /**
  * Created by ian on 25/05/2016.
  */
-public class ObjectSerializer implements Serializer {
+public class ObjectSerializer implements Serializer<Object> {
 
     private static final byte NULL = 'N';
     private static final byte STRING = 'S';
@@ -27,7 +27,7 @@ public class ObjectSerializer implements Serializer {
     private static final byte BOOLEAN = 'B';
     private static final byte BINARY = 'b';
     private static final byte TIMESTAMP = 'T';
-    private static final byte OBJECT = 'O';
+    private static final byte MAP = 'M';
     private static final byte ARRAY = 'A';
     private static final byte UUID = 'U';
 
@@ -40,6 +40,7 @@ public class ObjectSerializer implements Serializer {
         writeValue(out, value);
     }
 
+    @SuppressWarnings("unchecked")
     private void writeValue(DataOutput out, Object value) throws IOException {
         if (value == null) {
             out.writeByte(NULL);
@@ -80,11 +81,8 @@ public class ObjectSerializer implements Serializer {
             out.writeByte(NUMBER);
             new NumberSerializer<>(Long.class).serialize(out, ((Number)value).longValue());
         } else if (Map.class.isAssignableFrom(value.getClass())) {
-            out.writeByte(OBJECT);
-            out.writeInt(((Map)value).size());
-            for (Map.Entry<Object, Object> entry : ((Map<Object, Object>) value).entrySet()) {
-                writeEntry(out, entry);
-            }
+            out.writeByte(MAP);
+            new MapSerializer<>(this, this).serialize(out, (Map<Object, Object>)value);
         } else if (Collection.class.isAssignableFrom(value.getClass())) {
             out.writeByte(ARRAY);
             out.writeInt(((Collection)value).size());
@@ -92,8 +90,6 @@ public class ObjectSerializer implements Serializer {
             while (it.hasNext()) {
                 writeEntry(out, it.next());
             }
-        } else if (Map.Entry.class.isAssignableFrom(value.getClass())) {
-            
         } else if (Date.class.isAssignableFrom(value.getClass())) {
             writeDate(out, (Date) value);
         } else if (Calendar.class.isAssignableFrom(value.getClass())) {
@@ -136,6 +132,7 @@ public class ObjectSerializer implements Serializer {
         return readValue(in);
     }
 
+    @SuppressWarnings("unchecked")
     private Object readValue(DataInput in) throws IOException {
         // Fetch the first byte!
         byte type = in.readByte();
@@ -171,29 +168,8 @@ public class ObjectSerializer implements Serializer {
             case TIMESTAMP: {
                 return readTimestamp(in);
             }
-            case OBJECT: {
-                int size = in.readInt(); // get number of entries
-                Map<Object, Object> map = new LinkedHashMap<>();
-                for (int i = 0; i < size; i++) {
-                    byte entryType = in.readByte();
-                    if (entryType != ENTRY) {
-                        throw new IOException("Expected to find an ENTRY (" + ENTRY + ") but was: " + entryType);
-                    }
-                    // Extract map key
-                    byte keyType = in.readByte();
-                    if (keyType != KEY) {
-                        throw new IOException("Expected type to be that of KEY");
-                    }
-                    Object key = readValue(in);
-                    // Extract key value
-                    byte valueType = in.readByte();
-                    if (valueType != VALUE) {
-                        throw new IOException("Expected to find data type of VALUE");
-                    }
-                    Object value = readValue(in);
-                    map.put(key, value);
-                }
-                return map;
+            case MAP: {
+                return new MapSerializer<>(this, this).deserialize(in);
             }
             case ARRAY: {
                 int size = in.readInt(); // get number of entries

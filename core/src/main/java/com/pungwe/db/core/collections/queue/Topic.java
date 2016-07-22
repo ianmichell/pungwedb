@@ -11,34 +11,10 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.pungwe.db.core.io.serializers;
-
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+package com.pungwe.db.core.collections.queue;
 
 /**
- * Created by ian on 10/07/2016.
+ * Created by ian on 21/07/2016.
  */
-public class KryoSerializer<E> implements Serializer<E> {
-
-    private final Class<E> type;
-
-    public KryoSerializer(Class<E> type) {
-        this.type = type;
-    }
-
-    @Override
-    public void serialize(DataOutput out, E value) throws IOException {
-    }
-
-    @Override
-    public E deserialize(DataInput in) throws IOException {
-        return null;
-    }
-
-    @Override
-    public String getKey() {
-        return null;
-    }
+public interface Topic {
 }

@@ -9,17 +9,16 @@ import java.io.*;
 /**
  * Created by 917903 on 24/05/2016.
  */
-@Deprecated
-public class LZ4Serializer implements Serializer {
+public class LZ4Serializer<E> implements Serializer<E> {
 
-    private final Serializer serializer;
+    private final Serializer<E> serializer;
 
-    public LZ4Serializer(Serializer serializer) {
+    public LZ4Serializer(Serializer<E> serializer) {
         this.serializer = serializer;
     }
 
     @Override
-    public void serialize(DataOutput out, Object value) throws IOException {
+    public void serialize(DataOutput out, E value) throws IOException {
         LZ4Factory factory = LZ4Factory.fastestJavaInstance();
         LZ4Compressor compressor = factory.fastCompressor();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -33,7 +32,7 @@ public class LZ4Serializer implements Serializer {
     }
 
     @Override
-    public Object deserialize(DataInput in) throws IOException {
+    public E deserialize(DataInput in) throws IOException {
         LZ4Factory factory = LZ4Factory.fastestJavaInstance();
         LZ4FastDecompressor decompressor = factory.fastDecompressor();
         String type = in.readUTF();

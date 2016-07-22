@@ -1,6 +1,5 @@
 package com.pungwe.db.core.registry;
 
-import com.pungwe.db.core.io.serializers.EncryptedSerializer;
 import com.pungwe.db.core.io.serializers.LZ4Serializer;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
@@ -11,7 +10,6 @@ import java.util.Map;
 /**
  * Created by ian on 20/06/2016.
  */
-@Deprecated
 public class SerializerRegistry {
 
     private static SerializerRegistry INSTANCE;
@@ -22,10 +20,7 @@ public class SerializerRegistry {
     static {
         getIntance().register(new ObjectSerializer());
         /* Compressed Object Serializer */
-        getIntance().register(new LZ4Serializer(new ObjectSerializer()));
-        /* Encrypted Object Serializer */
-        getIntance().register(new EncryptedSerializer(new ObjectSerializer()));
-        /* Encrypted and Compressed Object Serializer */
+        getIntance().register(new LZ4Serializer<Object>(new ObjectSerializer()));
 //        getIntance().register(new EncryptedSerializer(new LZ4Serializer(new ObjectSerializer())));
     }
 

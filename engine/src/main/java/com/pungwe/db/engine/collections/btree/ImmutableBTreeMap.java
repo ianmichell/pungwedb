@@ -15,7 +15,6 @@ package com.pungwe.db.engine.collections.btree;
 
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.RecordFile;
-import com.sun.istack.internal.Nullable;
 
 import java.io.Closeable;
 import java.io.DataInput;
@@ -36,7 +35,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     private final Node<K, ?> rootNode;
 
     private ImmutableBTreeMap(Comparator<K> comparator, RecordFile<Node<K, ?>> keyFile,
-                              @Nullable RecordFile<V> valueFile) throws IOException {
+                              RecordFile<V> valueFile) throws IOException {
         super(comparator);
         this.keyFile = keyFile;
         this.valueFile = valueFile;
@@ -247,7 +246,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final RecordFile<V> valueFile;
 
         // FIXME: Record file might not be the way forward...
-        private BTreeWriter(RecordFile<Node<K, ?>> keyFile, @Nullable RecordFile<V> valueFile) {
+        private BTreeWriter(RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile) {
             this.keyFile = keyFile;
             this.valueFile = valueFile;
         }
@@ -287,7 +286,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
         @SuppressWarnings("unchecked")
         private List<Long> writeChildren(RecordFile.Writer<Node<K, ?>> keyWriter,
-                                         @Nullable RecordFile.Writer<V> valueWriter, Branch<K, Node> branch)
+                                         RecordFile.Writer<V> valueWriter, Branch<K, Node> branch)
                 throws IOException {
             // Use a linked list because they are nice and quick
             List<Long> children = new LinkedList<>();
@@ -352,7 +351,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          * @param valueFile      the file where the values for each key is written (null if inline is required).
          * @throws IOException if there is a problem writing the tree.
          */
-        public BTreeMergeWriter(int maxKeysPerNode, RecordFile<Node<K, ?>> keyFile, @Nullable RecordFile<V> valueFile)
+        public BTreeMergeWriter(int maxKeysPerNode, RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile)
                 throws IOException {
             this.maxKeysPerNode = maxKeysPerNode;
             this.keyFile = keyFile;
