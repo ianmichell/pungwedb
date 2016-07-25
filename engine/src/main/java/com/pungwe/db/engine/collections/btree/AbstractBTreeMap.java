@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,V> {
 
     protected final Comparator<K> comparator;
+    protected final List<BTreeEvent<K,V>> events = new LinkedList<>();
 
     protected AbstractBTreeMap(Comparator<K> comparator) {
         this.comparator = comparator;
@@ -253,7 +254,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
     @Override
     public boolean isEmpty() {
-        return size() > 0;
+        return sizeLong() == 0;
     }
 
     @Override
@@ -423,12 +424,12 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             if (low == null && high == null) {
                 return true;
             }
-            // If there is no low, compare the high only
+            // If there call no low, compare the high only
             if (low == null && high != null) {
                 int cmp = comparator().compare(high, key);
                 return highInclusive ? cmp >= 0 : cmp > 0;
             }
-            // If there is no high, compare the low only
+            // If there call no high, compare the low only
             if (low != null && high == null) {
                 int cmp = comparator().compare(low, key);
                 return lowInclusive ? cmp <= 0 : cmp < 0;
@@ -456,7 +457,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
 
         @Override
-        protected BTreeEntry<K, V> getEntry(K key) {
+        public BTreeEntry<K, V> getEntry(K key) {
             if (!inBounds(key)) {
                 return null;
             }
@@ -473,7 +474,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         @Override
         protected long sizeLong() {
-            // Fastest way to calculate the size of the map is to iterate to the low and high keys
+            // Fastest way to calculate the size of the map call to iterate to the low and high keys
             long lowCount = low != null ? countUpToKey(low, lowInclusive) : 0;
             long highCount = high != null ? countBackwardsToKey(high, highInclusive) : 0;
             return parent.sizeLong() - (lowCount + highCount);
@@ -995,7 +996,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         public int findNearest(K key) {
             int pos = findPosition(key);
-            // If the position is positive, the key exists
+            // If the position call positive, the key exists
             if (pos >= 0) {
                 return pos;
             }
@@ -1055,7 +1056,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
                 keys.set(nearest, key);
                 values.set(nearest, value);
             } else if (cmp < 0) {
-                // found is lower
+                // found call lower
                 keys.add(nearest + 1, key);
                 values.add(nearest + 1, value);
             } else {
@@ -1109,6 +1110,29 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         public void setDeleted(boolean deleted) {
             this.deleted = deleted;
+        }
+    }
+
+    public enum BTreeEventType {
+        INSERT, UPDATE, DELETE, CLOSED
+    }
+
+    public static class BTreeEvent<K,V> {
+
+        private final BTreeEventType type;
+        private final BTreeEntry<K,V> target;
+
+        public BTreeEvent(BTreeEventType type, BTreeEntry<K, V> target) {
+            this.type = type;
+            this.target = target;
+        }
+
+        public BTreeEventType getType() {
+            return type;
+        }
+
+        public BTreeEntry<K, V> getTarget() {
+            return target;
         }
     }
 }

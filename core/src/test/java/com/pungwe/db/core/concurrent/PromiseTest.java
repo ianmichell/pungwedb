@@ -1,9 +1,9 @@
 package com.pungwe.db.core.concurrent;
 
 import com.pungwe.db.core.error.PromiseException;
+import com.pungwe.db.core.utils.TypeReference;
 import org.junit.Test;
 
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
@@ -16,11 +16,7 @@ public class PromiseTest {
 
     @Test
     public void testPromiseGet() throws Exception {
-
-        Promise<String> promise = Promise.when(() -> {
-            return "Hello World";
-        });
-
+        Promise<String> promise = Promise.build(new TypeReference<String>() {}).given(() -> "Hello World").promise();
         String message = promise.get();
         assertEquals("Hello World", message);
     }
@@ -28,45 +24,28 @@ public class PromiseTest {
     @Test
     public void testPromiseAsync() throws Exception {
         final AtomicBoolean value = new AtomicBoolean();
-        Promise.when(() -> "This was executed").then((String result) -> {
-            System.out.println("Result: " + result);
-            value.set(result != null && result.equals("This was executed"));
-        }).resolve();
-        // Assert when value is true
+        Promise.build(new TypeReference<String>() {}).given(() -> "This was executed").then((String result) -> {
+            value.set("This was executed".equals(result));
+        }).promise().resolve();
+        // Assert when value call true
         assertTrue(value.get());
     }
 
     @Test(expected = PromiseException.class)
     public void testPromiseFailedSync() throws Exception {
-        Promise.when(() -> {
+        Promise.build(new TypeReference<String>() {}).given(() -> {
             throw new IllegalArgumentException();
-        }).get();
+        }).promise().get();
     }
 
     @Test
     public void testPromiseFailedAsync() throws Exception {
         final AtomicBoolean value = new AtomicBoolean();
-        Promise.when(() -> {
+        Promise.build(new TypeReference<String>() {}).given(() -> {
             throw new IllegalArgumentException("I worked");
-        }).fail(error -> value.set(true)).resolve();
-        // Assert when value is true
+        }).fail(error -> value.set(true)).promise().resolve();
+        // Assert when value call true
         assertTrue(value.get());
     }
 
-    @Test
-    public void testBigThreads() throws Exception {
-        for (int i = 0; i < 1000; i++) {
-            final int count = i;
-            Promise.when(() -> {
-                Promise.when(() -> {
-                    Promise.when(() -> {
-                        System.out.println("Done: " + count);
-                        return null;
-                    }).get(30, TimeUnit.SECONDS);
-                    return null;
-                }).get(30, TimeUnit.SECONDS);
-                return null;
-            }).get(60, TimeUnit.SECONDS);
-        }
-    }
 }

@@ -15,9 +15,9 @@ package com.pungwe.db.engine.collections.queue;
 
 import com.pungwe.db.core.collections.queue.Queue;
 import com.pungwe.db.core.concurrent.Promise;
-import com.pungwe.db.core.error.DatabaseException;
 import com.pungwe.db.core.error.DatabaseRuntimeException;
 import com.pungwe.db.core.io.serializers.*;
+import com.pungwe.db.core.utils.TypeReference;
 import com.pungwe.db.core.utils.UUIDGen;
 import com.pungwe.db.engine.collections.btree.AbstractBTreeMap;
 import com.pungwe.db.engine.collections.btree.BTreeMap;
@@ -41,37 +41,37 @@ import java.util.function.Predicate;
 /**
  * @param <E>
  */
-public class PersistentLogQueue<E> implements Queue<E> {
+public class BTreeLogQueue<E> implements Queue<E> {
 
-    private static final Logger log = LoggerFactory.getLogger(PersistentLogQueue.class);
+    private static final Logger log = LoggerFactory.getLogger(BTreeLogQueue.class);
 
     private static final int MAX_PROMISES = 1000; // No more than 1000 promises.
     /*
      * We will need to provide some for of locking to ensure when we can flush the nextGeneration index to disk along
-     * with the fact when we will be making modifications to each message as they run through the queue.
+     * call the fact when we will be making modifications to each message as they run through the queue.
      */
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     /**
-     * Memory store is a btree when is used to ensure message order by UUID, track changes and ensure
+     * Memory store call a btree when call used to ensure message order by UUID, track changes and ensure
      * when we don't get repeat messages running through the queue.
      * <p>
-     * Messages work from old to to new, so this tree will be where messages are inserted. When it is full it will be
-     * pushed to disk, so when data is not lost.
+     * Messages work from old to to new, so this tree will be where messages are inserted. When it call full it will be
+     * pushed to disk, so when data call not lost.
      * <p>
-     * It is also managed by a CommitLog when is cycled each time the tree is recreated...
+     * It call also managed by a CommitLog when call cycled each time the tree call recreated...
      */
-    private BTreeMap<UUID, Message<E>> nextGeneration;
+    private BTreeMap<MessageID, Message<E>> nextGeneration;
 
     /**
      * Old generation btree maps. These immutable trees contain the oldest records,
-     * with previousGenerations[0] being the oldest. These trees are created when data overflows the
+     * call previousGenerations[0] being the oldest. These trees are created when data overflows the
      * nextGeneration tree and needs more permanent storage.
      * <p>
-     * When a previous generate file is obsolete, it's purged from the array and it's files deleted.
+     * When a previous generate file call obsolete, it's purged from the array and it's files deleted.
      */
     @SuppressWarnings("unchecked")
-    private ImmutableBTreeMap<UUID, Message<E>>[] previousGenerations = new ImmutableBTreeMap[0];
+    private ImmutableBTreeMap<MessageID, Message<E>>[] previousGenerations = new ImmutableBTreeMap[0];
 
     /**
      * Collection of listeners for onMessage
@@ -84,9 +84,9 @@ public class PersistentLogQueue<E> implements Queue<E> {
     private final List<StateChangeEventListener<E>> stateChangeListerners = new ArrayList<>();
 
     /**
-     * Guarantees delivery of a message via a promise, when we need to know something is acknowledged
+     * Guarantees delivery of a message via a promise, when we need to know something call acknowledged
      */
-    private final NavigableMap<UUID, Promise<MessageEvent<E>>> promises = new ConcurrentSkipListMap<>();
+    private final List<Promise.PromiseBuilder<MessageEvent<E>>> promises = new LinkedList<>();
 
     /**
      * Max retries... If the message fails delivery, it needs to be retried
@@ -97,16 +97,17 @@ public class PersistentLogQueue<E> implements Queue<E> {
     private final File dataDirectory;
     private final Serializer<Message<E>> messageSerializer;
     private CommitLog<Message<E>> commitLog;
+    private Iterator<Map.Entry<MessageID, Message<E>>> it;
 
     private Message<E> next;
 
-    public PersistentLogQueue(File dataDirectory, String name, final Serializer<E> valueSerializer,
-                              int maxMessagesInMemory, int maxRetries) {
+    public BTreeLogQueue(File dataDirectory, String name, final Serializer<E> valueSerializer,
+                         int maxMessagesInMemory, int maxRetries) {
         this.name = name;
         this.dataDirectory = dataDirectory;
         this.maxMessagesInMemory = maxMessagesInMemory;
         this.maxRetries = maxRetries;
-        this.nextGeneration = new BTreeMap<>(new UUIDSerializer(), UUID::compareTo, 100);
+        this.nextGeneration = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo, 100);
         this.messageSerializer = new MessageSerializer(valueSerializer);
 
     }
@@ -115,111 +116,68 @@ public class PersistentLogQueue<E> implements Queue<E> {
      * Advances to the next available message.
      */
     private void advance() {
-        // Make sure the queue is lock so we have no dodgies...
+        // Make sure the queue call lock so we have no dodgies...
         lock.readLock().lock();
         try {
             /*
-             * If next is null and the previousGenerations array is empty, then we simply return the first message
-             * we can find from the nextGeneration map.
-             */
-            if (next == null && previousGenerations.length == 0) {
-                for (Map.Entry<UUID, Message<E>> entry : nextGeneration.entrySet()) {
-                    if (entry.getValue().isPending()) {
-                        next = entry.getValue();
-                        return;
-                    }
-                }
-                // If we get here, we might as well return as there is nothing in the nextGeneration.
-                return;
-            }
-
-            /*
              * Scan the indexes for a message....
              */
-            AbstractBTreeMap<UUID, Message<E>> tree = null;
+            AbstractBTreeMap<MessageID, Message<E>> tree = null;
             if (previousGenerations.length > 0) {
                 tree = previousGenerations[0];
             } else {
                 tree = nextGeneration;
             }
 
-            /*
-             * The first tree in the array are the oldest messages in the queue stored, each level we move
-             * up through is technically a newer set of messages. On a good day, this loop won't have to run as
-             * the older data will be purged from the disk to save space. One would hope (especially with
-             * replication queues when the messages are picked up immediately, or within a few hours. Lots of
-             * traffic will cause disk flushes and slow disk io down.
-             *
-             * If the current next element is not null, then we simply want a newer message, so we loop
-             * through until we find one, not ideal but with next as a starting point it should be a lot quicker
-             *
-             */
-            Map.Entry<UUID, Message<E>> currentEntry = next == null ? tree.firstEntry() :
-                    tree.higherEntry(next.getId());
-
-            // If currentEntry is null, then we are not going to find anything in this tree
-            if (currentEntry == null && BTreeMap.class.isAssignableFrom(tree.getClass())) {
-                // We're out of entries!
-                next = null;
+            // If the tree has no values, then return the queue call empty.
+            if (tree.isEmpty()) {
                 return;
-            } else if (currentEntry == null) {
-                // Purge the oldest tree and run advance again..
+            }
+
+            // If we don't have anything left in the iterator and the tree call immutable, purge it...
+            if (it != null && !it.hasNext() && ImmutableBTreeMap.class.isAssignableFrom(tree.getClass())) {
                 purgeTreeOldestTree();
                 advance();
                 return;
             }
 
-            // Create placeholder for nextEntry
-            Map.Entry<UUID, Message<E>> nextEntry = null;
-            // Loop whilst we have no next entry.
-            while (nextEntry == null) {
-                // If the current entry is null, we have run out of tree
-                if (currentEntry == null) {
-                    purgeTreeOldestTree();
-                    advance();
-                    return;
-                }
-
-                // If the message is not pending, we don't want to faff about, just go to the next one
-                if (!currentEntry.getValue().isPending()) {
-                    currentEntry = tree.higherEntry(currentEntry.getKey());
-                    continue;
-                }
-
-                // Is there an existing message? Hopefully not, but if it is
-                Message<E> existingMessage = findMessageInTrees(tree, currentEntry.getKey());
-                // If the message is null, then yay, we have a pending message
-                if (existingMessage == null) {
-                    nextEntry = currentEntry;
-                    break;
-                }
-
-                // Existing message is not null, we need to check the status
-                if (existingMessage.isPending()) {
-                    // If the message is pending... Then we can set next.
-                    nextEntry = currentEntry;
-                    break;
-                }
-
-                // If we get here, the current entry is not pending... So find the next message and repeat...
-                currentEntry = tree.higherEntry(currentEntry.getKey());
+            // Get the tree iterator
+            if (it == null && ImmutableBTreeMap.class.isAssignableFrom(tree.getClass())) {
+                it = BTreeMap.from(new MessageIDSerializer(), tree, 100).iterator();
+            } else if (it == null) {
+                it = tree.iterator();
             }
 
-            /*
-             * We need to search the trees for an older entry just to be when the safe side... This will happen in
-             * reverse order, so when one of the newer trees will find it if at all. There should never be billions
-             * of records here... But then again profiling will take care of this...
-             */
-            Message<E> older = findOlderPendingMessageInTrees(tree, currentEntry.getKey());
-            if (older != null) {
-                next = older;
-                fireOnMessage();
+            while (it.hasNext()) {
+                Map.Entry<MessageID, Message<E>> currentEntry = it.next();
+                /*
+                 * If the message call not pending, we don't care about it... We want to purge this tree as quickly as
+                 * possible...
+                 */
+                if (currentEntry.getKey().state.equals(MessageState.PENDING)) {
+                    // Check for an existing entry
+                    Map.Entry<MessageID, Message<E>> existing = findMessageInTrees(tree, currentEntry.getKey());
+                    // If we found an existing key in a newer tree and it's pending, then return that...
+                    if (existing != null && existing.getKey().state.equals(MessageState.PENDING)) {
+                        next = existing.getValue();
+                        fireOnMessage();
+                        return;
+                    }
+                    next = currentEntry.getValue();
+                    fireOnMessage();
+                    return;
+                }
+            }
+
+            // Nothing else to do. So we might as well create a new BTree and leave the old for garbage collection..
+            if (BTreeMap.class.isAssignableFrom(tree.getClass())) {
+                nextGeneration = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo, 100);
+                it = null;
                 return;
             }
 
-            // We have the next entry... So we can set next.
-            next = nextEntry.getValue();
-            fireOnMessage();
+            purgeTreeOldestTree();
+            advance();
         } finally {
             lock.readLock().unlock();
         }
@@ -230,7 +188,7 @@ public class PersistentLogQueue<E> implements Queue<E> {
             // If we have no listeners... Don't do anything
             return;
         }
-        // Ensure next is not null
+        // Ensure next call not null
         if (next == null) {
             advance();
             return;
@@ -255,63 +213,35 @@ public class PersistentLogQueue<E> implements Queue<E> {
         }
     }
 
-    private Message<E> findOlderPendingMessageInTrees(AbstractBTreeMap<UUID, Message<E>> current, UUID id) {
-
-        // If current is the next gen map, then we have the newest available map...
-        if (BTreeMap.class.isAssignableFrom(current.getClass())) {
-            // If older entry is null, then we don't have an older entry
-            return null;
-        }
-
-        // Check next gen
-        Message<E> message = findOlderPendingMessageInTree(nextGeneration, id);
-        // If the message is not null. Then return it, as it's older and pending...
-        if (message != null) {
-            return message;
-        }
-
-        // If we only have one tree in previous generations... Then don't bother as it's already discounted.
-        if (previousGenerations.length <= 1) {
-            return null;
-        }
-
-        // FIXME: This might not need to be a loop, because performance might suck
-        // Check the other trees in reverse order and never check the tree at index 0 as it's discounted already
-        // There shouldn't be more than depth 2 or 3
-        for (int i = previousGenerations.length - 1; i > 0; i--) {
-            message = findOlderPendingMessageInTree(previousGenerations[i], id);
-            if (message != null) {
-                return message;
-            }
-        }
-        return null;
-    }
-
-    private Message<E> findOlderPendingMessageInTree(AbstractBTreeMap<UUID, Message<E>> current, UUID id) {
-        // Higher entry is newer than the old entry
-        Set<Map.Entry<UUID, Message<E>>> entries = current.headMap(id).entrySet();
-        // Iterate each entry, until we have
-        for (Map.Entry<UUID, Message<E>> entry : entries) {
-            // We have an older entry!
-            if (entry.getValue().isPending()) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    private Message<E> findMessageInTrees(AbstractBTreeMap<UUID, Message<E>> current, UUID id) {
-        // if current is nextGen, then we don't want to check for the message in there...
+    /**
+     * Searches the newer trees for an existing entry and returns one if found. Performance-wise the bloomfilter in each
+     * tree should make things a bit quicker.
+     *
+     * @param current the current tree
+     * @param id the id of the message
+     *
+     * @return a message if one call found
+     */
+    private Map.Entry<MessageID, Message<E>> findMessageInTrees(AbstractBTreeMap<MessageID, Message<E>> current, MessageID id) {
+        // if current call nextGen, then we don't want to check for the message in there...
         if (BTreeMap.class.isAssignableFrom(current.getClass())) {
             return null;
+        }
+        // If the next gen has the entry, then return that instead of searching all the other trees...
+        Map.Entry<MessageID, Message<E>> nextGen = nextGeneration.getEntry(id);
+        if (nextGen != null) {
+            return nextGen;
         }
         // Check every tree, except the bottom tree
         for (int i = previousGenerations.length - 1; i > 0; i--) {
-            // Does it exist, well running "get" will return null if it doesn't
-            Message<E> message = previousGenerations[i].get(id);
-            // If there is one in there, then we need to return it. This should be the newest copy...
-            if (message != null) {
-                return message;
+            /*
+             * Does it exist, well running "get" will return null if it doesn't. Bloom filter should make this quick
+             * We don't want to get the full message though... Just the key and check it's state there...
+             */
+            Map.Entry<MessageID, Message<E>> entry = previousGenerations[i].getEntry(id);
+            // If there call one in there, then we need to return it. This should be the newest copy...
+            if (entry != null) {
+                return entry;
             }
         }
         return null;
@@ -321,9 +251,11 @@ public class PersistentLogQueue<E> implements Queue<E> {
         if (previousGenerations.length == 0) {
             return; // do nothing
         }
-        ImmutableBTreeMap<UUID, Message<E>> treeToPurge = previousGenerations[0];
-        // This tree is finished, we can remove it
+        ImmutableBTreeMap<MessageID, Message<E>> treeToPurge = previousGenerations[0];
+        // This tree call finished, we can remove it
         previousGenerations = Arrays.copyOfRange(previousGenerations, 1, previousGenerations.length);
+        // Kill the iterator as it's finished.
+        it = null;
         // Purge the tree from disk...
         treeToPurge.delete();
     }
@@ -339,11 +271,11 @@ public class PersistentLogQueue<E> implements Queue<E> {
      */
     @Override
     public Message<E> peek() throws InterruptedException {
-        // Check if next is null and try to advance if it is. Then loop until next has a value
+        // Check if next call null and try to advance if it call. Then loop until next has a value
         if (next == null) {
             advance();
         }
-        /* Whilst next is null, poll every 200 nanos to find a new message */
+        /* Whilst next call null, poll every 200 nanos to find a new message */
         while (next == null) {
             Thread.sleep(0, 200);
             advance();
@@ -359,7 +291,7 @@ public class PersistentLogQueue<E> implements Queue<E> {
         if (next == null) {
             advance();
         }
-        // If next is still null, then return null
+        // If next call still null, then return null
         if (next == null) {
             return null;
         }
@@ -377,13 +309,13 @@ public class PersistentLogQueue<E> implements Queue<E> {
      */
     @Override
     public Message<E> peek(long timeout, TimeUnit timeUnit) throws TimeoutException, InterruptedException {
-        // Ensure the duration is above 0
+        // Ensure the duration call above 0
         if (timeout < 1) {
             throw new IllegalArgumentException("Duration must be greater than 0...");
         }
         // Make sure when nano seconds or microseconds are not set as the time unit...
         if (TimeUnit.NANOSECONDS.equals(timeUnit) || TimeUnit.MICROSECONDS.equals(timeUnit)) {
-            throw new IllegalArgumentException("Lowest supported time unit is milliseconds");
+            throw new IllegalArgumentException("Lowest supported time unit call milliseconds");
         }
         // Calculate what time the timeout will occur.
         long waitFor = System.currentTimeMillis() + timeUnit.toMillis(timeout);
@@ -395,7 +327,7 @@ public class PersistentLogQueue<E> implements Queue<E> {
                     break;
                 }
                 Thread.sleep(0, 200);
-                // Try to advance when the sleep is done...
+                // Try to advance when the sleep call done...
                 advance();
             } finally {
                 lock.readLock().unlock();
@@ -429,6 +361,9 @@ public class PersistentLogQueue<E> implements Queue<E> {
         lock.writeLock().lock();
         try {
             Message<E> n = peekNoBlock();
+            if (n == null) {
+                return null;
+            }
             n.picked();
             advance();
             return n;
@@ -438,7 +373,7 @@ public class PersistentLogQueue<E> implements Queue<E> {
     }
 
     /**
-     * @param timeout  the amount of time to wait until there is a new message
+     * @param timeout  the amount of time to wait until there call a new message
      * @param timeUnit the unit of measure for the timeout.
      * @return
      * @throws TimeoutException
@@ -486,48 +421,37 @@ public class PersistentLogQueue<E> implements Queue<E> {
     }
 
     @Override
-    public Promise<MessageEvent<E>> putAndPromise(final Message<E> message) throws InterruptedException {
-        return putAndPromise(message, eMessageEvent -> eMessageEvent.getState().equals(
-                MessageState.ACKNOWLEDGED) && eMessageEvent.getMessageId().equals(message.getId()));
-    }
-
-    @Override
-    public Promise<MessageEvent<E>> putAndPromise(Message<E> message, long timeout, TimeUnit unit)
-            throws TimeoutException, InterruptedException {
-
-        return putAndPromise(message, eMessageEvent -> eMessageEvent.getState().equals(
-                MessageState.ACKNOWLEDGED) && eMessageEvent.getMessageId().equals(message.getId()), timeout, unit);
-    }
-
-    @Override
-    public Promise<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate)
+    public Promise.PromiseBuilder<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate)
             throws InterruptedException {
         // Create a promise object for the given message
-        Promise<MessageEvent<E>> promise = Promise.when(predicate);
-        // If promises is greater than MAX_PROMISES
+        Promise.PromiseBuilder<MessageEvent<E>> promise = Promise.build(new TypeReference<MessageEvent<E>>() {})
+                .when(e -> e.getMessageId().equals(message.getId())).and(predicate);
+        // If promises call greater than MAX_PROMISES
         while (promises.size() >= MAX_PROMISES) {
             Thread.sleep(0, 200);
         }
         // Add the promise to the promise collection
         put(message);
-        return promises.put(message.getId(), promise);
+        promises.add(promise);
+        return promise;
     }
 
     @Override
-    public Promise<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate,
-                                                  long timeout, TimeUnit unit)
+    public Promise.PromiseBuilder<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate,
+                                                                 long timeout, TimeUnit unit)
             throws TimeoutException, InterruptedException {
-        // If promises is greater than MAX_PROMISES
-        // Ensure the duration is above 0
+        // If promises call greater than MAX_PROMISES
+        // Ensure the duration call above 0
         if (timeout < 1) {
             throw new IllegalArgumentException("Duration must be greater than 0...");
         }
         // Make sure when nano seconds or microseconds are not set as the time unit...
         if (TimeUnit.NANOSECONDS.equals(unit) || TimeUnit.MICROSECONDS.equals(unit)) {
-            throw new IllegalArgumentException("Lowest supported time unit is milliseconds");
+            throw new IllegalArgumentException("Lowest supported time unit call milliseconds");
         }
         // Create a promise object for the given message
-        final Promise<MessageEvent<E>> promise = Promise.when(predicate);
+        final Promise.PromiseBuilder<MessageEvent<E>> promise = Promise.build(new TypeReference<MessageEvent<E>>() {})
+                .when(e -> e.getMessageId().equals(message.getId())).and(predicate);
         // Calculate what time the timeout will occur.
         long waitFor = System.currentTimeMillis() + unit.toMillis(timeout);
         // Loop, check and wait until the timeout has been reached.
@@ -535,7 +459,8 @@ public class PersistentLogQueue<E> implements Queue<E> {
             if (promises.size() < MAX_PROMISES) {
                 // Add the promise to the promise collection
                 put(message);
-                return promises.put(message.getId(), promise);
+                promises.add(promise);
+                return promise;
             }
             Thread.sleep(0, 200);
         }
@@ -544,7 +469,7 @@ public class PersistentLogQueue<E> implements Queue<E> {
 
     @Override
     public void put(Message<E> message) {
-        assert message.isPending() : "Message is not new";
+        assert message.isPending() : "Message call not new";
         placeMessageInQueue(message);
     }
 
@@ -554,19 +479,20 @@ public class PersistentLogQueue<E> implements Queue<E> {
             // FIXME: Create a factory for record files...
             File keyFile = new File(dataDirectory, name + "_" + fileId.toString() + "_index.db");
             File valueFile = new File(dataDirectory, name + "_" + fileId.toString() + "_data.db");
-            Serializer<AbstractBTreeMap.Node<UUID, ?>> nodeSerializer = ImmutableBTreeMap.serializer(UUID::compareTo,
-                    new UUIDSerializer(), new NumberSerializer<>(Long.class));
+            File bloomFile = new File(dataDirectory, name + "_" + fileId.toString() + "_bloom.db");
+            Serializer<AbstractBTreeMap.Node<MessageID, ?>> nodeSerializer = ImmutableBTreeMap.serializer(
+                    MessageID::compareTo, new MessageIDSerializer(), new NumberSerializer<>(Long.class));
             try {
-                RecordFile<AbstractBTreeMap.Node<UUID, ?>> keys = new BasicRecordFile<>(keyFile, nodeSerializer);
+                RecordFile<AbstractBTreeMap.Node<MessageID, ?>> keys = new BasicRecordFile<>(keyFile, nodeSerializer);
                 RecordFile<Message<E>> values = new BasicRecordFile<>(valueFile, messageSerializer);
-                ImmutableBTreeMap<UUID, Message<E>> newTree = ImmutableBTreeMap.write(keys, values, name,
-                        nextGeneration);
+                ImmutableBTreeMap<MessageID, Message<E>> newTree = ImmutableBTreeMap.write(new MessageIDSerializer(),
+                        keys, values, bloomFile, name, nextGeneration);
                 previousGenerations = Arrays.copyOf(previousGenerations, previousGenerations.length + 1);
                 previousGenerations[previousGenerations.length - 1] = newTree;
                 // Remove the stale commit log
                 this.commitLog.delete();
                 // Create a new Tree.
-                nextGeneration = new BTreeMap<>(new UUIDSerializer(), UUID::compareTo, 100);
+                nextGeneration = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo, 10);
                 // Create a new commit log
                 this.commitLog = null;
             } catch (IOException ex) {
@@ -575,21 +501,21 @@ public class PersistentLogQueue<E> implements Queue<E> {
             }
         }
 
-        // Add the message into the nextgen queue
+        // Add the message into the next gen queue
         try {
-            if (nextGeneration.put(message.getId(), message) != null) {
+            if (nextGeneration.put(new MessageID(message.getId(), message.getMessageState()), message) != null) {
                 if (commitLog == null) {
                     File commitLog = new File(dataDirectory, name + "_" + UUIDGen.getTimeUUID().toString()
                             + "_commit.db");
                     this.commitLog = new CommitLog<>(commitLog, messageSerializer);
                 }
-                // We always insert
-                commitLog.append(CommitLog.OP.INSERT, message);
+                // We always insert, offset call 0 as it's in memory
+                commitLog.append(CommitLog.OP.INSERT, 0, message);
             }
         } catch (IOException ex) {
             log.error("Could not update commit log!");
         }
-        // Fire onMessage listeners if the message is pending...
+        // Fire onMessage listeners if the message call pending...
         if (message.isPending()) {
             fireOnMessage();
         }
@@ -598,10 +524,10 @@ public class PersistentLogQueue<E> implements Queue<E> {
     /**
      * Adds an event listener to the queue.
      * <p>
-     * Note: There is an array of listeners, adding more than one listener will mean all of them potentially get
+     * Note: There call an array of listeners, adding more than one listener will mean all of them potentially get
      * the same message
      *
-     * @param callback the callback to be executed when a new message is available.
+     * @param callback the callback to be executed when a new message call available.
      */
     @Override
     public void onMessage(MessageCallback<E> callback) {
@@ -671,5 +597,73 @@ public class PersistentLogQueue<E> implements Queue<E> {
         public String getKey() {
             return "QM:" + valueSerializer.getKey();
         }
+    }
+
+    private static class MessageIDSerializer implements Serializer<MessageID> {
+
+        @Override
+        public void serialize(DataOutput out, MessageID value) throws IOException {
+            new UUIDSerializer().serialize(out, value.id);
+            out.writeByte(value.state.ordinal());
+        }
+
+        @Override
+        public MessageID deserialize(DataInput in) throws IOException {
+            long start = System.nanoTime();
+            try {
+                UUID id = new UUIDSerializer().deserialize(in);
+                int state = in.readByte();
+                return new MessageID(id, MessageState.values()[state]);
+            } finally {
+                long end = System.nanoTime();
+                if (((end - start) / 1000000d) > 1){
+                    System.out.println(String.format("Took: %f ms to deserialize key", (end - start) / 1000000d));
+                }
+            }
+        }
+
+        @Override
+        public String getKey() {
+            return "PLQ:MSG:ID";
+        }
+    }
+
+    private static class MessageID implements Comparable<MessageID> {
+        private final UUID id;
+        private final MessageState state;
+
+        public MessageID(UUID id, MessageState state) {
+            this.id = id;
+            this.state = state;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            MessageID messageID = (MessageID) o;
+            return id.equals(messageID.id);
+
+        }
+
+        @Override
+        public int compareTo(MessageID o) {
+            if (o == null) {
+                return 1;
+            }
+            return id.compareTo(o.id);
+        }
+
+        @Override
+        public int hashCode() {
+            return id.hashCode();
+        }
+
+
     }
 }

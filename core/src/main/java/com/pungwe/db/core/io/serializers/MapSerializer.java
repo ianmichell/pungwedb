@@ -33,7 +33,7 @@ public class MapSerializer<K,V> implements Serializer<Map<K,V>> {
     public Map<K, V> deserialize(DataInput in) throws IOException {
         // Get map length
         int length = in.readInt();
-        Map<K, V> map = new LinkedHashMap<>(length);
+        Map<K, V> map = new LinkedHashMap<>();
         for (int i = 0; i < length; i++) {
             K key = keySerializer.deserialize(in);
             V value = valueSerializer.deserialize(in);

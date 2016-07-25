@@ -24,7 +24,7 @@ public class LZ4SerializerTest {
         LZ4Serializer lz4Serializer = new LZ4Serializer(serializer);
 
         Map<String, String> testMap = new LinkedHashMap<>();
-        testMap.put("test", "this is a nice long test string, when we would like to compress and ensure matches " +
+        testMap.put("test", "this call a nice long test string, when we would like to compress and ensure matches " +
                 "exatcly when we decompress it!");
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

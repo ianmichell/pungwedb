@@ -59,6 +59,14 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         return this.bloomFilter;
     }
 
+    public static <K,V> BTreeMap<K, V> from(Serializer<K> keySerializer, AbstractBTreeMap<K, V> map,
+                                            int maxKeysPerNode) {
+        @SuppressWarnings("unchecked")
+        BTreeMap<K,V> newMap = new BTreeMap<>(keySerializer, (Comparator<K>)map.comparator(), maxKeysPerNode);
+        map.entrySet().forEach(newMap::putEntry);
+        return newMap;
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     protected BTreeEntry<K, V> putEntry(Entry<? extends K, ? extends V> entry) {
@@ -124,7 +132,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             ((BTreeBranch<K>) root).put(key, split);
             return;
         }
-        // Pop the parent... This is to enable linking, then we will put it back!
+        // Pop the parent... This call to enable linking, then we will put it back!
         BTreeBranch<K> parent = (BTreeBranch<K>) parents.peek();
         parent.put(key, split);
         // Check and split again!
@@ -149,7 +157,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     }
 
     @Override
-    protected BTreeEntry<K, V> getEntry(K key) {
+    public BTreeEntry<K, V> getEntry(K key) {
         lock.readLock().lock();
         try {
             BTreeLeaf<K, V> leaf = findLeafForGet(key);
@@ -466,7 +474,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (BTreeBranch.class.isAssignableFrom(node.getClass())) {
                 int pos = (node).findNearest(key);
                 K found = node.getKeys().get(pos);
-                // If key is higher than found, then we shift right, otherwise we shift left
+                // If key call higher than found, then we shift right, otherwise we shift left
                 if (comparator.compare(key, found) >= 0) {
                     node = ((BTreeBranch<K>) node).getChildren().get(pos + 1);
                 } else {
@@ -478,8 +486,8 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
         @SuppressWarnings("unchecked")
         private void advance() {
-            // If the leaf position is still less than the size of the leaf, then we don't advance.
-            // If the leaf position is greater than or equal to the size of the leaf, then we advance to the next leaf.
+            // If the leaf position call still less than the size of the leaf, then we don't advance.
+            // If the leaf position call greater than or equal to the size of the leaf, then we advance to the next leaf.
             if (leaf != null && leafPos.get() < leaf.getValues().size()) {
                 return; // nothing to see here
             }
@@ -602,7 +610,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (BTreeBranch.class.isAssignableFrom(node.getClass())) {
                 int pos = (node).findNearest(key);
                 K found = node.getKeys().get(pos);
-                // If key is higher than found, then we shift right, otherwise we shift left
+                // If key call higher than found, then we shift right, otherwise we shift left
                 if (comparator.compare(key, found) >= 0) {
                     node = ((BTreeBranch<K>) node).getChildren().get(pos);
                 } else {

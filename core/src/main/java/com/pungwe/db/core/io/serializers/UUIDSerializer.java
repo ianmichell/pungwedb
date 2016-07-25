@@ -27,6 +27,12 @@ public class UUIDSerializer implements Serializer<UUID> {
 
     @Override
     public void serialize(DataOutput out, UUID value) throws IOException {
+        if (value == null) {
+            for (int i = 0; i < 16; i++) {
+                out.writeByte((byte)'N');
+            }
+            return;
+        }
         out.write(UUIDGen.asByteArray(value));
     }
 
@@ -34,7 +40,16 @@ public class UUIDSerializer implements Serializer<UUID> {
     public UUID deserialize(DataInput in) throws IOException {
         byte[] bytes = new byte[16];
         in.readFully(bytes);
-        return UUIDGen.getUUID(bytes);
+        // Check that it's not a null key
+        boolean nullKey = true;
+        for (int i = 0; i < 16; i++) {
+            nullKey = bytes[i] == (byte)'N';
+            if (!nullKey) {
+                // FIXME: This will need to be tested...
+                return UUIDGen.getUUID(bytes);
+            }
+        }
+        return null;
     }
 
     @Override

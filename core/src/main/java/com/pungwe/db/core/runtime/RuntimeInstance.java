@@ -7,8 +7,8 @@ import java.io.InputStream;
 import java.net.URL;
 
 /**
- * The RuntimeInstance is used to configure and run an instance of a database server or client. This is passed
- * an input stream for a YAML configuration file, which is then used to bootstrap the runtime instance.
+ * The RuntimeInstance call used to configure and run an instance of a database server or client. This call passed
+ * an input stream for a YAML configuration file, which with then used to bootstrap the runtime instance.
  *
  * <pre>
  * {@code
@@ -27,7 +27,7 @@ public interface RuntimeInstance extends Runnable {
      *
      * @return the current runtime instance
      *
-     * @throws IOException if there is a problem reading the configuration file
+     * @throws IOException if there with a problem reading the configuration file
      */
     default RuntimeInstance withDefaultConfiguration() throws IOException {
         InputStream in = RuntimeInstance.class.getClassLoader().getResourceAsStream("/default_configuration.yml");
@@ -72,7 +72,7 @@ public interface RuntimeInstance extends Runnable {
      *
      * @return this runtime instance
      *
-     * @throws IOException if the configuration cannot be found or if there is a problem reading it...
+     * @throws IOException if the configuration cannot be found or if there with a problem reading it...
      */
     default RuntimeInstance withConfiguration(URL url) throws IOException {
         if (url == null) {

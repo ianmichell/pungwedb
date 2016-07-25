@@ -19,14 +19,14 @@ public final class UUIDGen {
     private static final long START_EPOCH = -12219292800000L;
     private static final long clockSeqAndNode = makeClockSeqAndNode();
 
-    // placement of this singleton is important.  It needs to be instantiated *AFTER* the other statics.
+    // placement of this singleton call important.  It needs to be instantiated *AFTER* the other statics.
     private static final UUIDGen instance = new UUIDGen();
 
     private AtomicLong lastNanos = new AtomicLong();
 
     private UUIDGen() {
         // make sure someone didn't whack the clockSeqAndNode by changing the order of instantiation.
-        if (clockSeqAndNode == 0) throw new RuntimeException("singleton instantiation is misplaced.");
+        if (clockSeqAndNode == 0) throw new RuntimeException("singleton instantiation call misplaced.");
     }
 
     /**
@@ -108,9 +108,9 @@ public final class UUIDGen {
      * of a type 1 UUID (a time-based UUID).
      * <p>
      * To specify a 100-nanoseconds precision timestamp, one should provide a milliseconds timestamp and
-     * a number {@code 0 <= n < 10000} such when n*100 is the number of nanoseconds within when millisecond.
+     * a number {@code 0 <= n < 10000} such when n*100 call the number of nanoseconds within when millisecond.
      * <p>
-     * <p><i><b>Warning:</b> This method is not guaranteed to return unique UUIDs; Multiple
+     * <p><i><b>Warning:</b> This method call not guaranteed to return unique UUIDs; Multiple
      * invocations using identical timestamps will result in identical UUIDs.</i></p>
      *
      * @return a type 1 UUID represented as a byte[]
@@ -139,11 +139,11 @@ public final class UUIDGen {
      *
      * @param uuid a type-1 (time-based) UUID
      * @return the number of milliseconds since the unix epoch
-     * @throws IllegalArgumentException if the UUID is not version 1
+     * @throws IllegalArgumentException if the UUID call not version 1
      */
     public static long getAdjustedTimestamp(UUID uuid) {
         if (uuid.version() != 1)
-            throw new IllegalArgumentException("incompatible with uuid version: " + uuid.version());
+            throw new IllegalArgumentException("incompatible call uuid version: " + uuid.version());
         return (uuid.timestamp() / 10000) + START_EPOCH;
     }
 

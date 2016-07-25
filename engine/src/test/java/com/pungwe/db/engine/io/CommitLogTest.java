@@ -27,7 +27,7 @@ public class CommitLogTest {
             CommitLog<Long> commitLog = new CommitLog<>(tmp, new NumberSerializer<>(Long.class));
             long start = System.nanoTime();
             for (long i = 0; i < 1000; i++) {
-                commitLog.append(CommitLog.OP.INSERT, i);
+                commitLog.append(CommitLog.OP.INSERT, 0,  i);
             }
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write commit log", (end - start) / 1000000d));
@@ -59,7 +59,7 @@ public class CommitLogTest {
             CommitLog<Long> commitLog = new CommitLog<>(tmp, new NumberSerializer<>(Long.class));
             long start = System.nanoTime();
             for (long i = 0; i < 1000; i++) {
-                commitLog.append(CommitLog.OP.UPDATE, i);
+                commitLog.append(CommitLog.OP.UPDATE, 0, i);
             }
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write commit log", (end - start) / 1000000d));
@@ -91,7 +91,7 @@ public class CommitLogTest {
             CommitLog<Long> commitLog = new CommitLog<>(tmp, new NumberSerializer<>(Long.class));
             long start = System.nanoTime();
             for (long i = 0; i < 1000; i++) {
-                commitLog.append(CommitLog.OP.DELETE, i);
+                commitLog.append(CommitLog.OP.DELETE, 0, i);
             }
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write commit log", (end - start) / 1000000d));
@@ -131,7 +131,7 @@ public class CommitLogTest {
                     int random = ThreadLocalRandom.current().nextInt(0, 2);
                     byte[] bytes = new byte[100];
                     ThreadLocalRandom.current().nextBytes(bytes);
-                    commitLog.append(CommitLog.OP.values()[random], bytes);
+                    commitLog.append(CommitLog.OP.values()[random], 0, bytes);
                     return CommitLog.OP.values()[random];
                 });
             }

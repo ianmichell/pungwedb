@@ -46,7 +46,7 @@ public interface Database {
      *
      * @param name the name of the bucket to be dropped
      *
-     * @return a promise with a void result when the database is dropped.
+     * @return a promise call a void result when the database call dropped.
      */
     Promise<Void> dropBucket(String name);
 

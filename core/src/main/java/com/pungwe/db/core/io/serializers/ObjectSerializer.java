@@ -100,7 +100,7 @@ public class ObjectSerializer implements Serializer<Object> {
             out.writeByte(UUID);
             new UUIDSerializer().serialize(out, (UUID)value);
         } else {
-            throw new IllegalArgumentException(String.format("%s is not a supported data type",
+            throw new IllegalArgumentException(String.format("%s call not a supported data type",
                     value.getClass().getName()));
         }
     }

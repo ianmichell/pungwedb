@@ -10,18 +10,21 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by ian when 07/07/2016.
  */
 public class BasicRecordFile<E> implements RecordFile<E> {
 
+    protected final ReentrantLock lock = new ReentrantLock();
     protected final AtomicBoolean closed = new AtomicBoolean();
     protected final Serializer<E> serializer;
     protected final File file;
@@ -48,13 +51,18 @@ public class BasicRecordFile<E> implements RecordFile<E> {
 
     @Override
     public E get(long position) throws IOException {
-        FileChannel channel = raf.getChannel().position(position);
+        FileChannel channel = raf.getChannel();
         // FIXME: We might want to throw an io error here...
-        Optional<Record> record = read(channel);
+        Optional<Record<E>> record = read(channel, position);
         if (!record.isPresent()) {
             return null;
         }
         return record.get().getValue();
+    }
+
+    @Override
+    public long size() throws IOException {
+        return writer.getPosition();
     }
 
     @Override
@@ -75,41 +83,47 @@ public class BasicRecordFile<E> implements RecordFile<E> {
         return file.delete();
     }
 
-    private Optional<Record> read(FileChannel channel) throws IOException {
-        if (channel.position() + 5 >= channel.size()) {
-            return Optional.empty();
+    protected Optional<Record<E>> read(FileChannel channel, long position) throws IOException {
+        lock.lock();
+        try {
+            if (position + 5 >= channel.size()) {
+                return Optional.empty();
+            }
+            channel = channel.position(position);
+            ByteBuffer buffer = ByteBuffer.wrap(new byte[5]).order(ByteOrder.BIG_ENDIAN);
+            channel.read(buffer);
+            buffer.flip();
+            ByteBufferInputStream in = new ByteBufferInputStream(buffer.asReadOnlyBuffer());
+            // Ensure what we have call a record
+            byte t = in.readByte();
+            // This could be a meta data entry...
+            if (t == (byte) 'M') {
+                long newPosition = position + 4096;
+                return read(channel, newPosition);
+            } else if (t != (byte) 'R') {
+                // Shift through the channel 1 byte at a time... We can't find the record.
+                long newPosition = position + 1;
+                return read(channel, newPosition);
+            }
+            // Get the record length
+            int length = in.readInt();
+            // Once we have the length, create a new byte buffer
+            buffer = ByteBuffer.allocate(length).order(ByteOrder.BIG_ENDIAN);
+            // Read into the buffer
+            channel.read(buffer);
+            buffer.flip();
+            // Replace the input stream
+            in = new ByteBufferInputStream(buffer);
+            Optional<Record<E>> v = Optional.empty();
+            // deserialize the record into an object.
+            E e = serializer.deserialize(in);
+            if (e != null) {
+                v = Optional.of(new Record<>(e, length, position, channel.position()));
+            }
+            return v;
+        } finally {
+            lock.unlock();
         }
-        ByteBuffer buffer = ByteBuffer.wrap(new byte[5]).order(ByteOrder.BIG_ENDIAN);
-        channel.read(buffer);
-        buffer.flip();
-        ByteBufferInputStream in = new ByteBufferInputStream(buffer.asReadOnlyBuffer());
-        // Ensure what we have is a record
-        byte t = in.readByte();
-        // This could be a meta data entry...
-        if (t == (byte)'M') {
-            channel.position(channel.position() + 4091);
-            return read(channel);
-        } else if (t != (byte)'R') {
-            // Shift through the channel 1 byte at a time... We can't find the record.
-            channel.position(channel.position() + 1);
-            return read(channel);
-        }
-        // Get the record length
-        int length = in.readInt();
-        // Once we have the length, create a new byte buffer
-        buffer = ByteBuffer.allocate(length).order(ByteOrder.BIG_ENDIAN);
-        // Read into the buffer
-        channel.read(buffer);
-        buffer.flip();
-        // Replace the input stream
-        in = new ByteBufferInputStream(buffer);
-        Optional<Record> v = Optional.empty();
-        // deserialize the record into an object.
-        E e = serializer.deserialize(in);
-        if (e != null) {
-            v = Optional.of(new Record(e, length, channel.position()));
-        }
-        return v;
     }
 
     @Override
@@ -132,7 +146,7 @@ public class BasicRecordFile<E> implements RecordFile<E> {
                     ByteBuffer buffer = ByteBuffer.allocate(4096);
                     channel.read(buffer);
                     ByteBufferInputStream input = new ByteBufferInputStream(buffer.asReadOnlyBuffer());
-                    // If M is not the first byte, then read back another 4k.
+                    // If M call not the first byte, then read back another 4k.
                     if (input.readByte() != 'M') {
                         position -= 4096;
                         continue;
@@ -146,7 +160,9 @@ public class BasicRecordFile<E> implements RecordFile<E> {
                     metaData = (Map<String, Object>)new ObjectSerializer().deserialize(input);
                     return metaData;
                 }
-                throw new IOException("Could not find metadata");
+                // No meta data found... We need a new one
+                metaData = new LinkedHashMap<>();
+                return metaData;
             } finally {
                 channel.close();
             }
@@ -178,28 +194,28 @@ public class BasicRecordFile<E> implements RecordFile<E> {
         }
     }
 
-    private class BasicRecordFileReader implements Reader<E> {
+    protected class BasicRecordFileReader implements Reader<E> {
 
-        private E next;
-        private AtomicLong position = new AtomicLong();
+        protected Record<E> next;
+        protected AtomicLong position = new AtomicLong();
 
-        private BasicRecordFileReader(long position) throws IOException {;
+        protected BasicRecordFileReader(long position) throws IOException {;
             this.position.set(position);
             advance();
         }
 
-        private void advance() throws IOException {
+        protected void advance() throws IOException {
             FileChannel channel = raf.getChannel();
             if (position.get() >= channel.size()) {
                 next = null;
                 return;
             }
-            Optional<Record> record = read(channel.position(position.get()));
+            Optional<Record<E>> record = read(channel, position.get());
             if (!record.isPresent()) {
                 next = null; // nothing left...
                 return;
             }
-            next = record.get().getValue();
+            next = record.get();
             position.set(record.get().getNextPosition());
         }
 
@@ -224,11 +240,20 @@ public class BasicRecordFile<E> implements RecordFile<E> {
 
         @Override
         public E next() {
+            Record<E> v = nextRecord();
+            return v == null ? null : v.getValue();
+        }
+
+        @Override
+        public Record<E> nextRecord() {
             if (!hasNext()) {
                 return null;
             }
             try {
-                final E result = next;
+                if (next == null) {
+                    return null;
+                }
+                final Record<E> result = next;
                 advance();
                 return result;
             } catch (IOException ex) {
@@ -238,11 +263,12 @@ public class BasicRecordFile<E> implements RecordFile<E> {
         }
     }
 
-    private class BasicRecordFileWriter implements Writer<E> {
+    protected class BasicRecordFileWriter implements Writer<E> {
 
-        private final FileChannel channel;
-        private final ByteBuffer buffer;
-        private final AtomicLong position = new AtomicLong();
+        protected final FileChannel channel;
+        protected final ByteBuffer buffer;
+        protected final AtomicLong position = new AtomicLong();
+        protected final AtomicLong channelPosition = new AtomicLong();
 
         public BasicRecordFileWriter() throws IOException {
             this(0);
@@ -251,6 +277,7 @@ public class BasicRecordFile<E> implements RecordFile<E> {
         public BasicRecordFileWriter(long position) throws IOException {
             this.channel = raf.getChannel();
             if (position > 0) {
+                this.channelPosition.set(position);
                 this.position.set(position);
             }
             // 16MB buffer...
@@ -262,29 +289,55 @@ public class BasicRecordFile<E> implements RecordFile<E> {
             return position.get();
         }
 
+        public long getFileSize() throws IOException {
+            return channelPosition.get();
+        }
+
+        public int calculateWriteSize(E value) throws IOException {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream dataOut = new DataOutputStream(bytes);
+            dataOut.write((byte)'R');
+            dataOut.writeInt(0);
+            serializer.serialize(dataOut, value);
+            return bytes.toByteArray().length;
+        }
+
         @Override
         public long append(E value) throws IOException {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            DataOutputStream out = new DataOutputStream(bytes);
-            serializer.serialize(out, value);
-            byte[] written = bytes.toByteArray();
-            if (buffer.remaining() < written.length + 5) {
-                sync();
+            lock.lock();
+            try {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                DataOutputStream out = new DataOutputStream(bytes);
+                serializer.serialize(out, value);
+                byte[] written = bytes.toByteArray();
+                if (buffer.remaining() < written.length + 5) {
+                    sync();
+                }
+                long position = channelPosition.get() + buffer.position();
+                ByteBufferOutputStream bufferOut = new ByteBufferOutputStream(buffer);
+                bufferOut.write((byte) 'R');
+                bufferOut.writeInt(written.length);
+                bufferOut.write(written);
+                this.position.set(position + buffer.position());
+                return position;
+            } finally {
+                lock.unlock();
             }
-            long position = channel.position() + buffer.position();
-            ByteBufferOutputStream bufferOut = new ByteBufferOutputStream(buffer);
-            bufferOut.write((byte) 'R');
-            bufferOut.writeInt(written.length);
-            bufferOut.write(written);
-            return position;
         }
 
         @Override
         public void sync() throws IOException {
-            buffer.flip();
-            channel.write(buffer);
-            buffer.clear();
-            position.set(channel.position());
+            lock.lock();
+            try {
+                buffer.flip();
+                channel.position(channelPosition.get()).write(buffer);
+                buffer.clear();
+                // Update channel position and buffer position.
+                channelPosition.set(channel.position());
+                position.set(channelPosition.get());
+            } finally {
+                lock.unlock();
+            }
         }
 
         @Override
@@ -294,47 +347,32 @@ public class BasicRecordFile<E> implements RecordFile<E> {
         }
 
         public void commit() throws IOException {
-            sync();
-            // Write the meta data
-            int remaining = (int)(position.get() > 4096 ? position.get() % 4096 : 4096 - position.get());
-            ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
-            DataOutputStream dataOut = new DataOutputStream(bytesOut);
-            // Write the object to data out
-            new ObjectSerializer().serialize(dataOut, metaData);
-            byte[] meta = bytesOut.toByteArray();
-            ByteBufferOutput byteBufferOutput = new ByteBufferOutput(buffer);
-            // Write empty bytes up to remaining
-            if (remaining > 0) {
-                byteBufferOutput.write(new byte[remaining]);
+            lock.lock();
+            try {
+                sync();
+                // If we have no meta data, don't bother writing any...
+                if (metaData == null || metaData.isEmpty()) {
+                    return;
+                }
+                // Write the meta data
+                int remaining = (int) (position.get() > 4096 ? position.get() % 4096 : 4096 - position.get());
+                ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
+                DataOutputStream dataOut = new DataOutputStream(bytesOut);
+                // Write the object to data out
+                new ObjectSerializer().serialize(dataOut, metaData);
+                byte[] meta = bytesOut.toByteArray();
+                ByteBufferOutput byteBufferOutput = new ByteBufferOutput(buffer);
+                // Write empty bytes up to remaining
+                if (remaining > 0) {
+                    byteBufferOutput.write(new byte[remaining]);
+                }
+                byteBufferOutput.writeByte('M');
+                byteBufferOutput.writeInt(meta.length);
+                byteBufferOutput.write(meta);
+                sync();
+            } finally {
+                lock.unlock();
             }
-            byteBufferOutput.writeByte('M');
-            byteBufferOutput.writeInt(meta.length);
-            byteBufferOutput.write(meta);
-            sync();
-        }
-    }
-
-    private class Record {
-        private final E value;
-        private final int size;
-        private final long nextPosition;
-
-        public Record(E value, int size, long position) {
-            this.value = value;
-            this.size = size;
-            nextPosition = position;
-        }
-
-        public E getValue() {
-            return value;
-        }
-
-        public int getSize() {
-            return size;
-        }
-
-        public long getNextPosition() {
-            return nextPosition;
         }
     }
 }

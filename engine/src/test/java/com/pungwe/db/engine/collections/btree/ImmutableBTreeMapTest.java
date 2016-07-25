@@ -16,6 +16,9 @@ package com.pungwe.db.engine.collections.btree;
 import com.pungwe.db.core.io.serializers.NumberSerializer;
 import com.pungwe.db.core.io.serializers.UUIDSerializer;
 import com.pungwe.db.core.utils.UUIDGen;
+import com.pungwe.db.engine.collections.btree.AbstractBTreeMap;
+import com.pungwe.db.engine.collections.btree.BTreeMap;
+import com.pungwe.db.engine.collections.btree.ImmutableBTreeMap;
 import com.pungwe.db.engine.io.BasicRecordFile;
 import com.pungwe.db.engine.io.RecordFile;
 import org.junit.Test;
@@ -48,20 +51,27 @@ public class ImmutableBTreeMapTest {
         long end = System.nanoTime();
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
-        File tmp = File.createTempFile("immutable", ".db");
+        File tmp = File.createTempFile("immutable", "_index.db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
             System.out.println("File Size in MB: " + ((double)tmp.length() / 1024d / 1024d));
             // Ensure we have every record
             for (long i = 0; i < 10000; i++) {
-                assertEquals(new Long(i), immutableMap.get(i));
+                try {
+                    assertEquals(new Long(i), immutableMap.get(i));
+                } catch (Throwable t) {
+                    System.out.println("Failed at: " + i);
+                    throw t;
+                }
             }
         } finally {
             tmp.delete();
@@ -80,12 +90,14 @@ public class ImmutableBTreeMapTest {
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -113,12 +125,14 @@ public class ImmutableBTreeMapTest {
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -152,12 +166,14 @@ public class ImmutableBTreeMapTest {
         System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
                             new NumberSerializer<>(Long.class)));
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -178,6 +194,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapIteratorExclusive() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -193,7 +210,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -214,6 +232,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapIteratorFromExclusive() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -229,7 +248,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -251,6 +271,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapIteratorToExclusive() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -266,7 +287,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -292,6 +314,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapReverseIterator() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -307,7 +330,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -328,6 +352,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapReverseIteratorExclusive() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -343,7 +368,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -365,6 +391,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapReverseIteratorFromExclusive() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -380,7 +407,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -402,6 +430,7 @@ public class ImmutableBTreeMapTest {
     public void testSubMapReverseIteratorToExclusive() throws Exception {
 
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
                     ImmutableBTreeMap.serializer(Long::compareTo, new NumberSerializer<>(Long.class),
@@ -417,7 +446,8 @@ public class ImmutableBTreeMapTest {
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(recordFile, "test", map);
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.write(new NumberSerializer<>(Long.class),
+                    recordFile, bloom, "test", map);
             end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to write and load immutable tree", (end - start) / 1000000d));
 
@@ -438,6 +468,7 @@ public class ImmutableBTreeMapTest {
     @Test
     public void testSequentialInsertAndMerge() throws IOException {
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             // Create a record file for the combined trees
             RecordFile<AbstractBTreeMap.Node<Long, ?>> keyFile = new BasicRecordFile<>(tmp,
@@ -456,7 +487,8 @@ public class ImmutableBTreeMapTest {
             }
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(keyFile, null, "test", 100,
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(new NumberSerializer<>(Long.class),
+                    keyFile, null, bloom, "test", 100,
                     tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
@@ -476,6 +508,7 @@ public class ImmutableBTreeMapTest {
     @Test
     public void testSplitInsertAndMerge() throws IOException {
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             // Create a record file for the combined trees
             RecordFile<AbstractBTreeMap.Node<Long, ?>> recordFile = new BasicRecordFile<>(tmp,
@@ -494,7 +527,8 @@ public class ImmutableBTreeMapTest {
             }
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(recordFile, null, "test", 100,
+            ImmutableBTreeMap<Long, Long> immutableMap = ImmutableBTreeMap.merge(new NumberSerializer<>(Long.class),
+                    recordFile, null, bloom, "test", 100,
                     tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
@@ -513,7 +547,8 @@ public class ImmutableBTreeMapTest {
 
     @Test
     public void testSplitGUIDInsertAndMerge() throws IOException {
-        File tmp = File.createTempFile("immutable", ".db");
+        File tmp = File.createTempFile("immutable", "_index.db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             // Create a record file for the combined trees
             RecordFile<AbstractBTreeMap.Node<UUID, ?>> recordFile = new BasicRecordFile<>(tmp,
@@ -537,8 +572,8 @@ public class ImmutableBTreeMapTest {
             }
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(recordFile, null, "test", 100,
-                    tree1, tree2, false);
+            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(new UUIDSerializer(), recordFile,
+                    null, bloom, "test", 100, tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
 
@@ -552,7 +587,7 @@ public class ImmutableBTreeMapTest {
                 // I will assume these are going to be in order
                 assertEquals(expect, result);
             }
-            assertEquals(20000l, counter.get());
+            assertEquals(20000, counter.get());
         } finally {
             tmp.delete();
         }
@@ -561,6 +596,7 @@ public class ImmutableBTreeMapTest {
     @Test
     public void testSplitGUIDInsertAndMergeThreads() throws Exception {
         File tmp = File.createTempFile("immutable", ".db");
+        File bloom = File.createTempFile("immutable", "_bloom.db");
         try {
             // Create a record file for the combined trees
             RecordFile<AbstractBTreeMap.Node<UUID, ?>> recordFile = new BasicRecordFile<>(tmp,
@@ -607,8 +643,8 @@ public class ImmutableBTreeMapTest {
             assertEquals(10000, tree2.entrySet().stream().count());
 
             long start = System.nanoTime();
-            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(recordFile, null,  "test", 100, tree1,
-                    tree2, false);
+            ImmutableBTreeMap<UUID, UUID> immutableMap = ImmutableBTreeMap.merge(new UUIDSerializer(), recordFile, null,
+                    bloom, "test", 100, tree1, tree2, false);
             long end = System.nanoTime();
             System.out.println(String.format("Took: %f ms to merge and load immutable tree", (end - start) / 1000000d));
 

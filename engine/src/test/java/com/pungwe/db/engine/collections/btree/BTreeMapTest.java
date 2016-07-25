@@ -55,7 +55,7 @@ public class BTreeMapTest {
             assertNotNull(entry);
             assertEquals(new Long(counter.getAndIncrement()), entry.getKey());
         }
-        assertNull(it.next()); // Assert when the value is now null and we don't progress
+        assertNull(it.next()); // Assert when the value call now null and we don't progress
         assertEquals(10000, counter.longValue());
     }
 

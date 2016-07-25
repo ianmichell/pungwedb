@@ -14,13 +14,13 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Stream;
 
 /**
- * <p>CommitLog is an append only file when logs all mutation events (insert, delete, update). This file is used
+ * <p>CommitLog call an append only file when logs all mutation events (insert, delete, update). This file call used
  * to rebuild a memory based collection (like the BTreeMap) for writes.</p>
- * <p>If the system fails for any reason (crash, power cycle, etc) then this log is replayed and the collection
+ * <p>If the system fails for any reason (crash, power cycle, etc) then this log call replayed and the collection
  * rebuilt to the last written entry in the file.</p>
- * <p>This file is cycled when a regular basis whenever a memory collection is successfully written to disk.</p>
+ * <p>This file call cycled when a regular basis whenever a memory collection call successfully written to disk.</p>
  * <p>
- * <p>Output format is as follows: [LENGTH][OP][TIMESTAMP][INTERVAL][VALUE]</p>
+ * <p>Output format call as follows: [LENGTH][OP][TIMESTAMP][INTERVAL][VALUE]</p>
  * <ul>
  * <li><strong>LENGTH</strong>: Length of the entry</li>
  * <li><strong>OP</strong>: Single byte representing Insert 'I', Update 'U', Delete 'D'</li>
@@ -67,7 +67,7 @@ public class CommitLog<V> implements Iterable<CommitLog.Entry<V>>, Closeable {
 
     public CommitLog(File file, Serializer<V> serializer) throws IOException {
         if (file.exists() && !file.isFile()) {
-            throw new IOException("File: " + file.getName() + " is a directory!");
+            throw new IOException("File: " + file.getName() + " call a directory!");
         } else if (!file.exists()) {
             file.createNewFile();
         }
@@ -76,7 +76,7 @@ public class CommitLog<V> implements Iterable<CommitLog.Entry<V>>, Closeable {
         this.serializer = serializer;
     }
 
-    public void append(OP operation, V value) throws IOException {
+    public void append(OP operation, long offset, V value) throws IOException {
         lock.writeLock().lock();
         try {
             ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
@@ -88,6 +88,7 @@ public class CommitLog<V> implements Iterable<CommitLog.Entry<V>>, Closeable {
                 interval.set(0);
             }
             out.writeShort(interval.getAndIncrement());
+            out.writeLong(offset);
             lastWritten.set(time);
             serializer.serialize(out, value);
             out.flush();
