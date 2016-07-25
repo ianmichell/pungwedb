@@ -29,6 +29,7 @@ public class PromiseTest {
         }).promise().resolve();
         // Assert when value call true
         assertTrue(value.get());
+
     }
 
     @Test(expected = PromiseException.class)

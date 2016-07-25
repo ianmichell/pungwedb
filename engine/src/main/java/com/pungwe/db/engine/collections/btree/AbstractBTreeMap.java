@@ -28,10 +28,12 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,V> {
 
+    protected final int maxKeysPerNode;
     protected final Comparator<K> comparator;
     protected final List<BTreeEvent<K,V>> events = new LinkedList<>();
 
-    protected AbstractBTreeMap(Comparator<K> comparator) {
+    protected AbstractBTreeMap(Comparator<K> comparator, int maxKeysPerNode) {
+        this.maxKeysPerNode = maxKeysPerNode;
         this.comparator = comparator;
     }
 
@@ -330,7 +332,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     }
 
     protected abstract BTreeEntry<K,V> putEntry(Entry<? extends K, ? extends V> entry);
-    protected abstract BTreeEntry<K,V> getEntry(K key);
+    public abstract BTreeEntry<K,V> getEntry(K key);
     protected abstract V removeEntry(K key);
     protected abstract long sizeLong();
     protected abstract Iterator<Entry<K,V>> iterator(K fromKey, boolean fromInclusive, K toKey,
@@ -395,7 +397,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         public SubMap(AbstractBTreeMap<K,V> parent, Comparator<K> comparator, K low, boolean lowInclusive,
                       K high, boolean highInclusive) {
-            super(comparator);
+            super(comparator, parent.maxKeysPerNode);
             this.parent = parent;
             this.low = low;
             this.high = high;

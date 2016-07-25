@@ -30,23 +30,21 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private final int maxKeysPerNode;
     private Node<K, ?> root;
     private final AtomicLong size = new AtomicLong();
     private final BloomFilter<K> bloomFilter;
-    private final Serializer<K> keySerializer;
+    private final Serializer<K> bloomSerializer;
 
     @SuppressWarnings("unchecked")
-    public BTreeMap(Serializer<K> keySerializer, Comparator<K> comparator, int maxKeysPerNode) {
-        super(comparator);
-        this.maxKeysPerNode = maxKeysPerNode;
+    public BTreeMap(Serializer<K> bloomSerializer, Comparator<K> comparator, int maxKeysPerNode) {
+        super(comparator, maxKeysPerNode);
         root = new BTreeLeaf<>(comparator);
-        this.keySerializer = keySerializer;
+        this.bloomSerializer = bloomSerializer;
         bloomFilter = BloomFilter.create((from, into) -> {
             try {
                 ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                 DataOutputStream out = new DataOutputStream(bytes);
-                BTreeMap.this.keySerializer.serialize(out, from);
+                BTreeMap.this.bloomSerializer.serialize(out, from);
                 into.putBytes(bytes.toByteArray());
             } catch (IOException ex) {
                 throw new DatabaseRuntimeException(ex);

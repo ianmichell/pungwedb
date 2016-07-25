@@ -333,6 +333,6 @@ public interface Queue<E> {
     }
 
     enum MessageState {
-        PENDING, PICKED, PROCESSING, ACKNOWLEDGED, EXPIRED, FAILED
+        PENDING, PICKED, PROCESSING, ACKNOWLEDGED, EXPIRED, NONE, FAILED
     }
 }

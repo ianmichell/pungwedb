@@ -13,6 +13,7 @@
  */
 package com.pungwe.db.engine.collections.queue;
 
+import com.google.common.hash.BloomFilter;
 import com.pungwe.db.core.collections.queue.Queue;
 import com.pungwe.db.core.concurrent.Promise;
 import com.pungwe.db.core.error.DatabaseRuntimeException;
@@ -45,33 +46,14 @@ public class BTreeLogQueue<E> implements Queue<E> {
 
     private static final Logger log = LoggerFactory.getLogger(BTreeLogQueue.class);
 
-    private static final int MAX_PROMISES = 1000; // No more than 1000 promises.
+    private static final int MAX_PROMISES = 100;
+    private static final int MAX_KEYS_PER_NODE = 1024;
+
     /*
      * We will need to provide some for of locking to ensure when we can flush the nextGeneration index to disk along
      * call the fact when we will be making modifications to each message as they run through the queue.
      */
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-
-    /**
-     * Memory store call a btree when call used to ensure message order by UUID, track changes and ensure
-     * when we don't get repeat messages running through the queue.
-     * <p>
-     * Messages work from old to to new, so this tree will be where messages are inserted. When it call full it will be
-     * pushed to disk, so when data call not lost.
-     * <p>
-     * It call also managed by a CommitLog when call cycled each time the tree call recreated...
-     */
-    private BTreeMap<MessageID, Message<E>> nextGeneration;
-
-    /**
-     * Old generation btree maps. These immutable trees contain the oldest records,
-     * call previousGenerations[0] being the oldest. These trees are created when data overflows the
-     * nextGeneration tree and needs more permanent storage.
-     * <p>
-     * When a previous generate file call obsolete, it's purged from the array and it's files deleted.
-     */
-    @SuppressWarnings("unchecked")
-    private ImmutableBTreeMap<MessageID, Message<E>>[] previousGenerations = new ImmutableBTreeMap[0];
 
     /**
      * Collection of listeners for onMessage
@@ -88,6 +70,7 @@ public class BTreeLogQueue<E> implements Queue<E> {
      */
     private final List<Promise.PromiseBuilder<MessageEvent<E>>> promises = new LinkedList<>();
 
+    private final NavigableMap<UUID, QueueSegment<E>> segments = new ConcurrentSkipListMap<>();
     /**
      * Max retries... If the message fails delivery, it needs to be retried
      */
@@ -96,8 +79,8 @@ public class BTreeLogQueue<E> implements Queue<E> {
     private final String name;
     private final File dataDirectory;
     private final Serializer<Message<E>> messageSerializer;
-    private CommitLog<Message<E>> commitLog;
-    private Iterator<Map.Entry<MessageID, Message<E>>> it;
+//    private CommitLog<Message<E>> commitLog;
+//    private Iterator<Map.Entry<MessageID, Message<E>>> it;
 
     private Message<E> next;
 
@@ -107,9 +90,13 @@ public class BTreeLogQueue<E> implements Queue<E> {
         this.dataDirectory = dataDirectory;
         this.maxMessagesInMemory = maxMessagesInMemory;
         this.maxRetries = maxRetries;
-        this.nextGeneration = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo, 100);
-        this.messageSerializer = new MessageSerializer(valueSerializer);
+        this.messageSerializer = new MessageSerializer<>(valueSerializer);
+    }
 
+    private void createNewSegment() throws IOException {
+        QueueSegment<E> segment = QueueSegment.newSegment(dataDirectory, name, maxMessagesInMemory,
+                messageSerializer);
+        segments.put(segment.fileID, segment);
     }
 
     /**
@@ -119,65 +106,47 @@ public class BTreeLogQueue<E> implements Queue<E> {
         // Make sure the queue call lock so we have no dodgies...
         lock.readLock().lock();
         try {
+
+            if (segments.isEmpty()) {
+                return;
+            }
             /*
              * Scan the indexes for a message....
              */
-            AbstractBTreeMap<MessageID, Message<E>> tree = null;
-            if (previousGenerations.length > 0) {
-                tree = previousGenerations[0];
-            } else {
-                tree = nextGeneration;
-            }
-
-            // If the tree has no values, then return the queue call empty.
-            if (tree.isEmpty()) {
-                return;
-            }
-
-            // If we don't have anything left in the iterator and the tree call immutable, purge it...
-            if (it != null && !it.hasNext() && ImmutableBTreeMap.class.isAssignableFrom(tree.getClass())) {
-                purgeTreeOldestTree();
+            QueueSegment<E> segment = segments.firstEntry().getValue();
+            if (!segment.hasNext()) {
+                if (segments.size() == 1) {
+                    next = null;
+                    return;
+                }
+                // Purge
+                segments.remove(segment.fileID);
                 advance();
                 return;
             }
-
-            // Get the tree iterator
-            if (it == null && ImmutableBTreeMap.class.isAssignableFrom(tree.getClass())) {
-                it = BTreeMap.from(new MessageIDSerializer(), tree, 100).iterator();
-            } else if (it == null) {
-                it = tree.iterator();
-            }
-
-            while (it.hasNext()) {
-                Map.Entry<MessageID, Message<E>> currentEntry = it.next();
-                /*
-                 * If the message call not pending, we don't care about it... We want to purge this tree as quickly as
-                 * possible...
-                 */
-                if (currentEntry.getKey().state.equals(MessageState.PENDING)) {
-                    // Check for an existing entry
-                    Map.Entry<MessageID, Message<E>> existing = findMessageInTrees(tree, currentEntry.getKey());
-                    // If we found an existing key in a newer tree and it's pending, then return that...
-                    if (existing != null && existing.getKey().state.equals(MessageState.PENDING)) {
-                        next = existing.getValue();
-                        fireOnMessage();
-                        return;
-                    }
-                    next = currentEntry.getValue();
-                    fireOnMessage();
-                    return;
+            MessageID found = null;
+            while (segment.hasNext() && found == null) {
+                final MessageID id = segment.next();
+                // Does the message exist in any of the segments (from last to first)
+                Optional<QueueSegment<E>> existing = segments.descendingMap().tailMap(segment.fileID, false)
+                        .entrySet().stream().filter(entry -> entry.getValue().contains(id.id)).map(Map.Entry::getValue)
+                        .findFirst();
+                if (!existing.isPresent()) {
+                    found = id;
+                    break;
+                }
+                if (!existing.get().getState(id.id).equals(MessageState.PENDING)) {
+                    continue;
                 }
             }
-
-            // Nothing else to do. So we might as well create a new BTree and leave the old for garbage collection..
-            if (BTreeMap.class.isAssignableFrom(tree.getClass())) {
-                nextGeneration = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo, 100);
-                it = null;
+            if (found == null && segments.size() == 1) {
+                next = null;
                 return;
+            } else if (found == null) {
+                advance();
             }
-
-            purgeTreeOldestTree();
-            advance();
+            next = segment.get(found.id);
+            fireOnMessage();
         } finally {
             lock.readLock().unlock();
         }
@@ -195,10 +164,8 @@ public class BTreeLogQueue<E> implements Queue<E> {
         }
         lock.readLock().lock();
         try {
-            // Create a new copy of the message
-            final Message<E> message = new QueueMessage(next.getId(), next.getHeaders(), next.getBody(), next.getRetries());
             // Add event listeners
-            buildMessage(message);
+            QueueMessage<E> message = buildMessage(next);
             // Set the message to picked
             message.picked();
             // Fire the onMessage event for the current message
@@ -213,51 +180,8 @@ public class BTreeLogQueue<E> implements Queue<E> {
         }
     }
 
-    /**
-     * Searches the newer trees for an existing entry and returns one if found. Performance-wise the bloomfilter in each
-     * tree should make things a bit quicker.
-     *
-     * @param current the current tree
-     * @param id the id of the message
-     *
-     * @return a message if one call found
-     */
-    private Map.Entry<MessageID, Message<E>> findMessageInTrees(AbstractBTreeMap<MessageID, Message<E>> current, MessageID id) {
-        // if current call nextGen, then we don't want to check for the message in there...
-        if (BTreeMap.class.isAssignableFrom(current.getClass())) {
-            return null;
-        }
-        // If the next gen has the entry, then return that instead of searching all the other trees...
-        Map.Entry<MessageID, Message<E>> nextGen = nextGeneration.getEntry(id);
-        if (nextGen != null) {
-            return nextGen;
-        }
-        // Check every tree, except the bottom tree
-        for (int i = previousGenerations.length - 1; i > 0; i--) {
-            /*
-             * Does it exist, well running "get" will return null if it doesn't. Bloom filter should make this quick
-             * We don't want to get the full message though... Just the key and check it's state there...
-             */
-            Map.Entry<MessageID, Message<E>> entry = previousGenerations[i].getEntry(id);
-            // If there call one in there, then we need to return it. This should be the newest copy...
-            if (entry != null) {
-                return entry;
-            }
-        }
-        return null;
-    }
-
     private void purgeTreeOldestTree() {
-        if (previousGenerations.length == 0) {
-            return; // do nothing
-        }
-        ImmutableBTreeMap<MessageID, Message<E>> treeToPurge = previousGenerations[0];
-        // This tree call finished, we can remove it
-        previousGenerations = Arrays.copyOfRange(previousGenerations, 1, previousGenerations.length);
-        // Kill the iterator as it's finished.
-        it = null;
-        // Purge the tree from disk...
-        treeToPurge.delete();
+
     }
 
     @Override
@@ -393,35 +317,40 @@ public class BTreeLogQueue<E> implements Queue<E> {
         }
     }
 
-    private void buildMessage(final Message<E> from) {
+    private QueueMessage buildMessage(final Message<E> from) {
         // Fire the event...
-        from.onStateChange(event -> {
-            // Event for when
-            QueueMessage replace = new QueueMessage(from.getId(), from.getHeaders(), from.getBody(), from.getRetries());
-            switch (event.getTo()) {
-                case EXPIRED:
-                case FAILED: {
-                    if (replace.getRetries() + 1 > maxRetries) {
-                        break;
-                    }
-                    // Retry the message, this won't fire any events, but will change the state to pending and increment
-                    // the retry count...
-                    replace.retry();
+        QueueMessage<E> message = new QueueMessage(next.getId(), next.getHeaders(), next.getBody(), next.getRetries());
+        message.onStateChange(this::stateChangeProcessor);
+        return message;
+    }
+
+    private void stateChangeProcessor(final StateChangeEvent<E> event) {
+        Message<E> from = event.getTarget();
+        QueueMessage replace = new QueueMessage(from.getId(), from.getHeaders(), from.getBody(), from.getRetries());
+        switch (event.getTo()) {
+            case EXPIRED:
+            case FAILED: {
+                if (replace.getRetries() + 1 > maxRetries) {
                     break;
                 }
-                default: {
-                    // We don't want to fire anymore events here. Simply update the status
-                    replace.setMessageState(event.getTo());
-                    break;
-                }
+                // Retry the message, this won't fire any events, but will change the state to pending and increment
+                // the retry count...
+                replace.retry();
+                break;
             }
-            // FIXME: Add promise processing...
-            placeMessageInQueue(replace);
-        });
+            default: {
+                // We don't want to fire anymore events here. Simply update the status
+                replace.setMessageState(event.getTo());
+                break;
+            }
+        }
+        // FIXME: Add promise processing... Message changes should be recorded in the commit log
+        placeMessageInQueue(replace);
     }
 
     @Override
-    public Promise.PromiseBuilder<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate)
+    public Promise.PromiseBuilder<MessageEvent<E>> putAndPromise(Message<E> message,
+                                                                 Predicate<MessageEvent<E>> predicate)
             throws InterruptedException {
         // Create a promise object for the given message
         Promise.PromiseBuilder<MessageEvent<E>> promise = Promise.build(new TypeReference<MessageEvent<E>>() {})
@@ -437,8 +366,9 @@ public class BTreeLogQueue<E> implements Queue<E> {
     }
 
     @Override
-    public Promise.PromiseBuilder<MessageEvent<E>> putAndPromise(Message<E> message, Predicate<MessageEvent<E>> predicate,
-                                                                 long timeout, TimeUnit unit)
+    public Promise.PromiseBuilder<MessageEvent<E>> putAndPromise(Message<E> message,
+                                                                 Predicate<MessageEvent<E>> predicate, long timeout,
+                                                                 TimeUnit unit)
             throws TimeoutException, InterruptedException {
         // If promises call greater than MAX_PROMISES
         // Ensure the duration call above 0
@@ -474,25 +404,32 @@ public class BTreeLogQueue<E> implements Queue<E> {
     }
 
     private void placeMessageInQueue(Message<E> message) {
+        // Generate a file id
+        UUID fileId = UUIDGen.getTimeUUID();
+        if (false) {
+            try {
+                File valueFile = new File(dataDirectory, name + "_" + fileId.toString() + "_data.db");
+                RecordFile<Message<E>> values = new BasicRecordFile<>(valueFile, messageSerializer);
+            } catch (IOException ex) {
+                log.error("Could not create a new record file...");
+            }
+        }
         if (nextGeneration.size() >= maxMessagesInMemory) {
-            UUID fileId = UUIDGen.getTimeUUID();
             // FIXME: Create a factory for record files...
             File keyFile = new File(dataDirectory, name + "_" + fileId.toString() + "_index.db");
-            File valueFile = new File(dataDirectory, name + "_" + fileId.toString() + "_data.db");
             File bloomFile = new File(dataDirectory, name + "_" + fileId.toString() + "_bloom.db");
             Serializer<AbstractBTreeMap.Node<MessageID, ?>> nodeSerializer = ImmutableBTreeMap.serializer(
                     MessageID::compareTo, new MessageIDSerializer(), new NumberSerializer<>(Long.class));
             try {
                 RecordFile<AbstractBTreeMap.Node<MessageID, ?>> keys = new BasicRecordFile<>(keyFile, nodeSerializer);
-                RecordFile<Message<E>> values = new BasicRecordFile<>(valueFile, messageSerializer);
                 ImmutableBTreeMap<MessageID, Message<E>> newTree = ImmutableBTreeMap.write(new MessageIDSerializer(),
-                        keys, values, bloomFile, name, nextGeneration);
+                        keys, null, bloomFile, name, nextGeneration);
                 previousGenerations = Arrays.copyOf(previousGenerations, previousGenerations.length + 1);
                 previousGenerations[previousGenerations.length - 1] = newTree;
                 // Remove the stale commit log
                 this.commitLog.delete();
                 // Create a new Tree.
-                nextGeneration = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo, 10);
+                createNewBTree();
                 // Create a new commit log
                 this.commitLog = null;
             } catch (IOException ex) {
@@ -534,7 +471,7 @@ public class BTreeLogQueue<E> implements Queue<E> {
         listeners.add(callback);
     }
 
-    private class QueueMessage extends Message<E> {
+    private static class QueueMessage<E> extends Message<E> {
 
         public QueueMessage(UUID id, Map<String, Object> headers, E body, int retries) {
             super(id, headers, body);
@@ -552,7 +489,7 @@ public class BTreeLogQueue<E> implements Queue<E> {
         }
     }
 
-    private class MessageSerializer implements Serializer<Message<E>> {
+    private static class MessageSerializer<E> implements Serializer<Message<E>> {
 
         private final Serializer<E> valueSerializer;
 
@@ -601,19 +538,35 @@ public class BTreeLogQueue<E> implements Queue<E> {
 
     private static class MessageIDSerializer implements Serializer<MessageID> {
 
+        private final UUIDSerializer uuidSerializer = new UUIDSerializer();
+        private final boolean ignoreState;
+
+        public MessageIDSerializer() {
+            this.ignoreState = false;
+        }
+
+        public MessageIDSerializer(boolean ignoreState) {
+            this.ignoreState = ignoreState;
+        }
+
         @Override
         public void serialize(DataOutput out, MessageID value) throws IOException {
-            new UUIDSerializer().serialize(out, value.id);
-            out.writeByte(value.state.ordinal());
+            uuidSerializer.serialize(out, value.id);
+            if (!ignoreState) {
+                out.writeByte(value.state.ordinal());
+            }
         }
 
         @Override
         public MessageID deserialize(DataInput in) throws IOException {
             long start = System.nanoTime();
             try {
-                UUID id = new UUIDSerializer().deserialize(in);
-                int state = in.readByte();
-                return new MessageID(id, MessageState.values()[state]);
+                UUID id = uuidSerializer.deserialize(in);
+                if (!ignoreState) {
+                    int state = in.readByte();
+                    return new MessageID(id, MessageState.values()[state]);
+                }
+                return new MessageID(id, MessageState.NONE);
             } finally {
                 long end = System.nanoTime();
                 if (((end - start) / 1000000d) > 1){
@@ -665,5 +618,230 @@ public class BTreeLogQueue<E> implements Queue<E> {
         }
 
 
+    }
+
+    /**
+     * Used to store a segment of the queue. This is an append only queue, so when a segment is full, it's tree is
+     * pushed to the disk and then a new segment is created... This is created in the style of a LSM...
+     *
+     * @param <E>
+     */
+    private static class QueueSegment<E> implements Iterator<MessageID> {
+
+        private final UUID fileID;
+        private final File directory;
+        private final String name;
+        private RecordFile<Message<E>> data;
+        private CommitLog<BTreeCommitEntry> commitLog;
+        private AbstractBTreeMap<MessageID, Long> index;
+        private final int maxSize;
+        private MessageID nextPosition;
+
+        private QueueSegment(File directory, String name, UUID fileID, RecordFile<Message<E>> data,
+                             CommitLog<BTreeCommitEntry> commitLog, AbstractBTreeMap<MessageID, Long> index,
+                             int maxSize) {
+            this.fileID = fileID;
+            this.data = data;
+            this.commitLog = commitLog;
+            this.index = index;
+            this.maxSize = maxSize;
+            this.name = name;
+            this.directory = directory;
+        }
+
+        public static <E> QueueSegment<E> newSegment(File dataDirectory, String queueName, int maxSize,
+                                                     Serializer<Message<E>> serializer) throws IOException {
+            // Create the file id.
+            UUID fileId = UUIDGen.getTimeUUID();
+            // Create a record file for the message data
+            if (dataDirectory.exists() && !dataDirectory.isDirectory()) {
+                throw new IOException("Expecting a directory, but was not given one...");
+            } else if (!dataDirectory.exists() && dataDirectory.mkdirs()) {
+                throw new IOException("Could not create data directory");
+            }
+            // Record file...
+            File dataFile = new File(dataDirectory, queueName + "_" + fileId.toString() + "_data.db");
+            RecordFile<Message<E>> data = new BasicRecordFile<>(dataFile, serializer);
+            // Index - We do not want more than MAX_KEYS_PER_NODE, but should honour the max size...
+            BTreeMap<MessageID, Long> index = new BTreeMap<>(new MessageIDSerializer(), MessageID::compareTo,
+                    Math.min(maxSize, MAX_KEYS_PER_NODE));
+            // Commit Log...
+            File commitLogFile = new File(dataDirectory, queueName + "_" + fileId.toString() + "_commit.db");
+            CommitLog<BTreeCommitEntry> commitLog = new CommitLog<>(commitLogFile, new BTreeCommitEntrySerializer());
+            // Create new instance
+            return new QueueSegment<>(dataDirectory, queueName, fileId, data, commitLog, index, maxSize);
+        }
+
+        public void put(Message<E> message) {
+            // Checks if this is immutable...
+            if (isFull()) {
+                throw new UnsupportedOperationException("This segment is immutable or full!");
+            }
+            try {
+                MessageID messageId = new MessageID(message.getId(), message.getMessageState());
+                // Add the record to the data file
+                long position = data.writer().append(message);
+                // Create a commit log entry
+                commitLog.append(CommitLog.OP.INSERT, position, new BTreeCommitEntry(
+                        message.getId(), message.getMessageState(), position, message.getRetries()));
+                // Add to the index.
+                if (index.put(messageId, position) == null) {
+                    throw new DatabaseRuntimeException("Could not write message to index");
+                }
+
+                // If we have reached the limit of this segment, then we need to lock it.
+                if (index.size() == maxSize) {
+                    Serializer<AbstractBTreeMap.Node<MessageID, ?>> serializer = ImmutableBTreeMap.serializer(
+                            MessageID::compareTo, new MessageIDSerializer(), new NumberSerializer<>(Long.class));
+                    File file = new File(directory, name + "_" + fileID + "_index.db");
+                    File bloomFile = new File(directory, name + "_" + fileID + "_bloom.db");
+                    RecordFile<AbstractBTreeMap.Node<MessageID, ?>> keys = new BasicRecordFile<>(file, serializer);
+                    index = ImmutableBTreeMap.write(new MessageIDSerializer(true), keys, bloomFile, name, index);
+                }
+            } catch (IOException ex) {
+                throw new DatabaseRuntimeException("Could not save message to disk", ex);
+            }
+        }
+
+        public Message<E> get(UUID messageId) {
+            // Don't need to worry about message state
+            Long offset = index.get(new MessageID(messageId, MessageState.PENDING));
+            if (offset == null) {
+                return null;
+            }
+            try {
+                return data.get(offset);
+            } catch (IOException ex) {
+                throw new DatabaseRuntimeException(ex);
+            }
+        }
+
+        public MessageState getState(UUID messageId) {
+            Map.Entry<MessageID, Long> entry = index.getEntry(new MessageID(messageId, MessageState.PENDING));
+            return entry == null ? null : entry.getKey().state;
+        }
+
+        public boolean contains(UUID messageId) {
+            return index.containsKey(new MessageID(messageId, MessageState.PENDING));
+        }
+
+        public MessageID lower(UUID messageId, Predicate<MessageID> predicate) {
+            for (MessageID key : index.descendingKeySet().headSet(new MessageID(messageId, MessageState.PENDING))) {
+                if (predicate.test(key)) {
+                    return key;
+                }
+            }
+            return null;
+        }
+
+        public MessageID higher(UUID messageId, Predicate<MessageID> predicate) {
+            for (MessageID key : index.keySet().tailSet(new MessageID(messageId, MessageState.PENDING))) {
+                if (predicate.test(key)) {
+                    return key;
+                }
+            }
+            return null;
+        }
+
+        public boolean isFull() {
+            return ImmutableBTreeMap.class.isAssignableFrom(index.getClass()) || index.size() == maxSize;
+        }
+
+        public void delete() {
+
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (nextPosition == null) {
+                advance();
+            }
+            return nextPosition != null;
+        }
+
+        @Override
+        public MessageID next() {
+            if (!hasNext()) {
+                return null;
+            }
+            MessageID next = nextPosition;
+            if (next != null) {
+                advance();
+            }
+            return next;
+        }
+
+        public void advance() {
+            NavigableSet<MessageID> keys = index.keySet();
+            if (nextPosition != null) {
+                keys = keys.tailSet(nextPosition, true);
+            }
+            Optional<MessageID> found = keys.stream().filter(m -> m.state.equals(MessageState.PENDING)).findFirst();
+            nextPosition = found.orElse(null);
+        }
+
+        public void resetPosition() {
+            nextPosition = null;
+        }
+    }
+
+    private static class BTreeCommitEntry {
+        private final UUID messageId;
+        private final MessageState messageState;
+        private final long offset;
+        private final int retries;
+
+        public BTreeCommitEntry(UUID messageId, MessageState messageState, long offset, int retries) {
+            this.messageId = messageId;
+            this.messageState = messageState;
+            this.retries = retries;
+            this.offset = offset;
+        }
+
+        public UUID getMessageId() {
+            return messageId;
+        }
+
+        public MessageState getMessageState() {
+            return messageState;
+        }
+
+        public long getOffset() {
+            return offset;
+        }
+
+        public int getRetries() {
+            return retries;
+        }
+    }
+
+    private static class BTreeCommitEntrySerializer implements Serializer<BTreeCommitEntry> {
+
+        final UUIDSerializer uuidSerializer = new UUIDSerializer();
+
+        @Override
+        public void serialize(DataOutput out, BTreeCommitEntry value) throws IOException {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream dataOut = new DataOutputStream(bytes);
+            uuidSerializer.serialize(dataOut, value.getMessageId());
+            dataOut.writeByte(value.getMessageState().ordinal());
+            dataOut.writeLong(value.getOffset());
+            dataOut.writeInt(value.getRetries());
+            out.write(bytes.toByteArray());
+        }
+
+        @Override
+        public BTreeCommitEntry deserialize(DataInput in) throws IOException {
+            UUID id = uuidSerializer.deserialize(in);
+            byte state = in.readByte();
+            long offset = in.readLong();
+            int retries = in.readInt();
+            return new BTreeCommitEntry(id, MessageState.values()[state], offset, retries);
+        }
+
+        @Override
+        public String getKey() {
+            return "BTCE";
+        }
     }
 }

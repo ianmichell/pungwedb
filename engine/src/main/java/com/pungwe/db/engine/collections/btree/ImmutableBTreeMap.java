@@ -20,6 +20,7 @@ import com.google.common.hash.BloomFilter;
 import com.pungwe.db.core.error.DatabaseRuntimeException;
 import com.pungwe.db.core.io.serializers.Serializer;
 import com.pungwe.db.engine.io.RecordFile;
+import com.sun.scenario.effect.Bloom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+// FIXME: We're going to have an issue with memory as the root node is always cached...
 /**
  * Created by ian when 09/07/2016.
  */
@@ -39,20 +41,22 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     private final RecordFile<V> valueFile;
     private long size;
     private final Node<K, ?> rootNode;
-    private final BloomFilter bloomFilter;
-    private final Serializer<K> keySerializer;
+    private BloomFilter bloomFilter;
+    private final Serializer<K> bloomSerializer;
 
-    private ImmutableBTreeMap(Comparator<K> comparator, Serializer<K> keySerializer, RecordFile<Node<K, ?>> keyFile,
-                              RecordFile<V> valueFile, File bloomFilter) throws IOException {
-        this(comparator, keySerializer, keyFile, valueFile, bloomFilter, null);
+    private ImmutableBTreeMap(Comparator<K> comparator, Serializer<K> bloomSerializer, RecordFile<Node<K, ?>> keyFile,
+                              RecordFile<V> valueFile, File bloomFilter)
+            throws IOException {
+        this(comparator, bloomSerializer, keyFile, valueFile, bloomFilter, null);
     }
 
-    private ImmutableBTreeMap(Comparator<K> comparator, Serializer<K> keySerializer, RecordFile<Node<K, ?>> keyFile,
-                              RecordFile<V> valueFile, File bloomFilter, Node<K, ?> root) throws IOException {
-        super(comparator);
+    private ImmutableBTreeMap(Comparator<K> comparator, Serializer<K> bloomSerializer,
+                              RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile,
+                              File bloomFilter, Node<K, ?> root) throws IOException {
+        super(comparator, -1);
         this.keyFile = keyFile;
         this.valueFile = valueFile;
-        this.keySerializer = keySerializer;
+        this.bloomSerializer = bloomSerializer;
         long rootPosition = loadMeta();
         if (root == null) {
             this.rootNode = findRootNode(rootPosition);
@@ -67,17 +71,17 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         return new ImmutableNodeSerializer<>(comparator, keySerializer, valueSerializer);
     }
 
-    public static <K, V> ImmutableBTreeMap<K, V> write(Serializer<K> keySerializer, RecordFile<Node<K, ?>> recordFile,
+    public static <K, V> ImmutableBTreeMap<K, V> write(Serializer<K> bloomSerializer, RecordFile<Node<K, ?>> recordFile,
                                                        File bloomFilterFile, String treeName,
                                                        AbstractBTreeMap<K, V> treeToWrite) throws IOException {
         // Write data inline...
-        return write(keySerializer, recordFile, null, bloomFilterFile, treeName, treeToWrite);
+        return write(bloomSerializer, recordFile, null, bloomFilterFile, treeName, treeToWrite);
     }
 
-    public static <K, V> ImmutableBTreeMap<K, V> write(Serializer<K> keySerializer, RecordFile<Node<K, ?>> keyFile,
+    public static <K, V> ImmutableBTreeMap<K, V> write(Serializer<K> bloomSerializer, RecordFile<Node<K, ?>> keyFile,
                                                        RecordFile<V> valueFile, File bloomFilterFile, String treeName,
                                                        AbstractBTreeMap<K, V> treeToWrite) throws IOException {
-        BTreeWriter<K, V> writer = new BTreeWriter<>(keySerializer, keyFile, valueFile, bloomFilterFile);
+        BTreeWriter<K, V> writer = new BTreeWriter<>(bloomSerializer, keyFile, valueFile, bloomFilterFile);
         return writer.write(treeName, treeToWrite);
     }
 
@@ -91,10 +95,10 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         return writer.merge(treeName, left, right, gc);
     }
 
-    public static <K, V> ImmutableBTreeMap<K, V> getInstance(Comparator<K> comparator, Serializer<K> keySerializer,
+    public static <K, V> ImmutableBTreeMap<K, V> getInstance(Comparator<K> comparator, Serializer<K> bloomKeySerializer,
                                                              RecordFile<Node<K, ?>> recordFile, RecordFile<V> valueFile,
                                                              File bloomFilter) throws IOException {
-        return new ImmutableBTreeMap<>(comparator, keySerializer, recordFile, valueFile, bloomFilter);
+        return new ImmutableBTreeMap<>(comparator, bloomKeySerializer, recordFile, valueFile, bloomFilter);
     }
 
     private long loadMeta() throws IOException {
@@ -120,7 +124,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                     try {
                         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                         DataOutputStream out = new DataOutputStream(bytes);
-                        ImmutableBTreeMap.this.keySerializer.serialize(out, from);
+                        ImmutableBTreeMap.this.bloomSerializer.serialize(out, from);
                         into.putBytes(bytes.toByteArray());
                     } catch (IOException ex) {
                         throw new DatabaseRuntimeException(ex);
@@ -315,15 +319,15 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         private final RecordFile<Node<K, ?>> keyFile;
         private final RecordFile<V> valueFile;
         private final File bloomFilterFile;
-        private final Serializer<K> keySerializer;
+        private final Serializer<K> bloomSerializer;
 
         // FIXME: Record file might not be the way forward...
-        private BTreeWriter(Serializer<K> keySerializer, RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile,
+        private BTreeWriter(Serializer<K> bloomSerializer, RecordFile<Node<K, ?>> keyFile, RecordFile<V> valueFile,
                             File bloomFilterFile) {
             this.keyFile = keyFile;
             this.valueFile = valueFile;
             this.bloomFilterFile = bloomFilterFile;
-            this.keySerializer = keySerializer;
+            this.bloomSerializer = bloomSerializer;
         }
 
         /**
@@ -340,6 +344,16 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             Node<K, ?> root = btreeToWrite.rootNode();
             Node<K, ?> newRoot = null;
             long rootPosition = 0;
+            BloomFilter<K> bloomFilter = BloomFilter.create((from, into) -> {
+                try {
+                    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                    DataOutputStream out = new DataOutputStream(bytes);
+                    bloomSerializer.serialize(out, from);
+                    into.putBytes(bytes.toByteArray());
+                } catch (IOException ex) {
+                    throw new DatabaseRuntimeException(ex);
+                }
+            }, btreeToWrite.size(), 0.01);
             if (Leaf.class.isAssignableFrom(root.getClass())) {
                 // Write leaves
                 List<Pair<Object>> values = new ArrayList<>(root.getKeys().size());
@@ -355,8 +369,9 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 // Root call a leaf and we should simply just write it to disk...
                 newRoot = new ImmutableLeaf<>(root.comparator, root.getKeys(), values);
                 rootPosition = keyWriter.append(newRoot);
+                newRoot.getKeys().forEach(bloomFilter::put);
             } else {
-                List<Long> children = writeChildren(keyWriter, valueWriter, (Branch<K, Node>) root);
+                List<Long> children = writeChildren(bloomFilter, keyWriter, valueWriter, (Branch<K, Node>) root);
                 newRoot = new ImmutableBranch<>(root.comparator, root.getKeys(), children);
                 rootPosition = keyWriter.append(newRoot);
             }
@@ -373,7 +388,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             }
             // write bloom filter
             try (OutputStream out = new FileOutputStream(bloomFilterFile);
-                 BufferedOutputStream bufferedOut = new BufferedOutputStream(out)) {
+                BufferedOutputStream bufferedOut = new BufferedOutputStream(out)) {
                 btreeToWrite.bloomFilter().writeTo(bufferedOut);
                 bufferedOut.flush();
             } catch (IOException ex) {
@@ -381,12 +396,12 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             }
 
             // Once the root node call written, then return a new instance of the ImmutableBTreeMap
-            return new ImmutableBTreeMap<>((Comparator<K>) btreeToWrite.comparator(), keySerializer, keyFile, valueFile,
+            return new ImmutableBTreeMap<>(btreeToWrite.comparator, bloomSerializer, keyFile, valueFile,
                     bloomFilterFile, newRoot);
         }
 
         @SuppressWarnings("unchecked")
-        private List<Long> writeChildren(RecordFile.Writer<Node<K, ?>> keyWriter,
+        private List<Long> writeChildren(BloomFilter<K> bloomFilter, RecordFile.Writer<Node<K, ?>> keyWriter,
                                          RecordFile.Writer<V> valueWriter, Branch<K, Node> branch)
                 throws IOException {
             // Use a linked list because they are nice and quick
@@ -406,12 +421,13 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                         values.addAll(((Leaf) child).getValues());
                     }
                     ImmutableLeaf<K> leaf = new ImmutableLeaf<>(child.comparator, keys, values);
+                    keys.forEach(bloomFilter::put);
                     long position = keyWriter.append(leaf);
                     children.add(position);
                     continue;
                 }
                 // If the child call a branch, we need to do exactly the same thing
-                List<Long> grandChildren = writeChildren(keyWriter, valueWriter, (Branch<K, Node>) child);
+                List<Long> grandChildren = writeChildren(bloomFilter, keyWriter, valueWriter, (Branch<K, Node>) child);
                 // Add child to immutable branch.
                 ImmutableBranch<K> immutableChild = new ImmutableBranch<>(child.comparator, child.getKeys(),
                         grandChildren);
@@ -446,9 +462,11 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          * Construct a new instance of the merge writer call the given node size and a record file.
          * <p>
          * N.B. This will be much quicker if the maxKeysPerNode call higher than when of the trees passing in, however
-         * some rationalisation call required and sensible number of keys per node when the bigger trees (like 1000) call
-         * the most sensible, otherwise it could be slower.
+         * some rationalisation call required and sensible number of keys per node when the bigger trees (like 1000)
+         * call the most sensible, otherwise it could be slower.
          *
+         * @param keySerializer  Used for the bloom filter, if you're using a multiField key,
+         *                       this can be slightly different for hashing
          * @param maxKeysPerNode the maximum number of keys per node
          * @param keyFile        the file for the tree to be written
          * @param valueFile      the file where the values for each key call written (null if inline call required).

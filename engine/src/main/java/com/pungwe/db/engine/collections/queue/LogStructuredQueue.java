@@ -306,28 +306,28 @@ public class LogStructuredQueue<E> implements Queue<E> {
 
     private void processStateChange(StateChangeEvent<E> stateChangeEvent) {
 
+        // Write the state change
+        writeStateChangeEvent(stateChangeEvent);
         // Message will always be a log structured message.
         LogStructuredMessage<E> message = (LogStructuredMessage<E>)stateChangeEvent.getTarget();
         switch (stateChangeEvent.getTo()) {
             // These need to be retried
             case PENDING: {
                 // Stick it back on the queue (in memory too preferably)
-                LogStructuredMessage<E> newMessage = buildAndStoreMessage(message);
-                newMessage.onStateChange(this::processStateChange);
-                memoryQueue.offerFirst(newMessage);
+                if (!memoryQueue.offerFirst(message)) {
+                    // If it evaluates to false (it means it could not go on to the queue)
+                    // write a new message...
+                    LogStructuredMessage<E> newMessage = buildAndStoreMessage(message);
+                    newMessage.onStateChange(this::processStateChange);
+                }
                 break;
             }
             case FAILED:
             case EXPIRED: {
                 // Greater than zero for constrained retry, to keep retrying
-                writeStateChangeEvent(stateChangeEvent);
                 if (maxRetries > 0 || maxRetries < 0) {
                     stateChangeEvent.getTarget().retry();
                 }
-                break;
-            }
-            default: {
-                writeStateChangeEvent(stateChangeEvent);
                 break;
             }
         }
