@@ -51,13 +51,21 @@ public class BasicRecordFile<E> implements RecordFile<E> {
 
     @Override
     public E get(long position) throws IOException {
+        Record<E> record = getRecord(position);
+        if (record != null) {
+            return record.getValue();
+        }
+        return null;
+    }
+
+    public Record<E> getRecord(long position) throws IOException {
         FileChannel channel = raf.getChannel();
         // FIXME: We might want to throw an io error here...
         Optional<Record<E>> record = read(channel, position);
         if (!record.isPresent()) {
             return null;
         }
-        return record.get().getValue();
+        return record.get();
     }
 
     @Override

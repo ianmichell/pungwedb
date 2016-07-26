@@ -403,7 +403,6 @@ public class ImmutableBTreeMapTest {
                 assertNotNull(map.put(i, i));
             }
             long end = System.nanoTime();
-            long time = end - start;
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();
@@ -442,7 +441,6 @@ public class ImmutableBTreeMapTest {
                 assertNotNull(map.put(i, i));
             }
             long end = System.nanoTime();
-            long time = end - start;
             System.out.println(String.format("Took: %f ms to put", (end - start) / 1000000d));
 
             start = System.nanoTime();

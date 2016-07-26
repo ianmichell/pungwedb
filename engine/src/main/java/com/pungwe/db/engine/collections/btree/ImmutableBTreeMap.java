@@ -82,7 +82,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                                                        RecordFile<V> valueFile, File bloomFilterFile, String treeName,
                                                        AbstractBTreeMap<K, V> treeToWrite) throws IOException {
         BTreeWriter<K, V> writer = new BTreeWriter<>(bloomSerializer, keyFile, valueFile, bloomFilterFile);
-        return writer.write(treeName, treeToWrite);
+        return writer.write(treeName, treeToWrite, treeToWrite.maxKeysPerNode);
     }
 
     public static <K, V> ImmutableBTreeMap<K, V> merge(Serializer<K> keySerializer, RecordFile<Node<K, ?>> keyFile,
@@ -90,9 +90,8 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                                                        int maxKeysPerNode, AbstractBTreeMap<K, V> left,
                                                        AbstractBTreeMap<K, V> right, boolean gc) throws IOException {
 
-        BTreeMergeWriter<K, V> writer = new BTreeMergeWriter<>(keySerializer, maxKeysPerNode, keyFile, valueFile,
-                bloomFilterFile);
-        return writer.merge(treeName, left, right, gc);
+        BTreeWriter<K, V> writer = new BTreeWriter<>(keySerializer, keyFile, valueFile, bloomFilterFile);
+        return writer.merge(treeName, maxKeysPerNode, left, right, gc);
     }
 
     public static <K, V> ImmutableBTreeMap<K, V> getInstance(Comparator<K> comparator, Serializer<K> bloomKeySerializer,
@@ -330,21 +329,8 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             this.bloomSerializer = bloomSerializer;
         }
 
-        /**
-         * Writes the given btree to a <code>RecordFile</code> and returns an instance of an <code>ImmutableBTreeMap</code>
-         *
-         * @param btreeToWrite an instance of <code>AbstractBTree</code> to write.
-         * @return an instance of <code>ImmutableBTreeMap</code>
-         * @throws IOException if there call a problem writing to the <code>RecordFile</code>
-         */
-        @SuppressWarnings("unchecked")
-        public ImmutableBTreeMap<K, V> write(String name, AbstractBTreeMap<K, V> btreeToWrite) throws IOException {
-            RecordFile.Writer<Node<K, ?>> keyWriter = keyFile.writer();
-            RecordFile.Writer<V> valueWriter = valueFile != null ? valueFile.writer() : null;
-            Node<K, ?> root = btreeToWrite.rootNode();
-            Node<K, ?> newRoot = null;
-            long rootPosition = 0;
-            BloomFilter<K> bloomFilter = BloomFilter.create((from, into) -> {
+        private BloomFilter<K> createBloomFilter(int size) {
+            return BloomFilter.create((from, into) -> {
                 try {
                     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                     DataOutputStream out = new DataOutputStream(bytes);
@@ -353,133 +339,114 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 } catch (IOException ex) {
                     throw new DatabaseRuntimeException(ex);
                 }
-            }, btreeToWrite.size(), 0.01);
-            if (Leaf.class.isAssignableFrom(root.getClass())) {
-                // Write leaves
-                List<Pair<Object>> values = new ArrayList<>(root.getKeys().size());
-                if (valueWriter != null) {
-                    // Create list of values
-                    for (Pair<Object> o : ((Leaf<K, Object, ?>) root).getValues()) {
-                        long position = valueWriter.append((V) o.getValue());
-                        values.add(new Pair<>(position, o.isDeleted()));
-                    }
-                } else {
-                    ((Leaf<K, Object, ?>) root).getValues().forEach(values::add);
-                }
-                // Root call a leaf and we should simply just write it to disk...
-                newRoot = new ImmutableLeaf<>(root.comparator, root.getKeys(), values);
-                rootPosition = keyWriter.append(newRoot);
-                newRoot.getKeys().forEach(bloomFilter::put);
-            } else {
-                List<Long> children = writeChildren(bloomFilter, keyWriter, valueWriter, (Branch<K, Node>) root);
-                newRoot = new ImmutableBranch<>(root.comparator, root.getKeys(), children);
-                rootPosition = keyWriter.append(newRoot);
-            }
+            }, size, 0.01);
+        }
+
+        private ImmutableBTreeMap<K, V> commitTree(String name, long offset, Node<K, ?> root,
+                                                   BloomFilter<K> bloomFilter, Comparator<K> comparator,
+                                                   RecordFile<Node<K, ?>> keyFile, long size) throws IOException {
             // Write the meta data
             Map<String, Object> metaData = new LinkedHashMap<>();
-            metaData.put("root", rootPosition);
+            metaData.put("root", offset);
             metaData.put("name", name);
-            metaData.put("size", btreeToWrite.sizeLong());
+            metaData.put("size", size);
             keyFile.setMetaData(metaData);
             // Sync the record to disk
-            keyWriter.commit();
-            if (valueWriter != null) {
-                valueWriter.commit();
-            }
-            // write bloom filter
-            try (OutputStream out = new FileOutputStream(bloomFilterFile);
-                BufferedOutputStream bufferedOut = new BufferedOutputStream(out)) {
-                btreeToWrite.bloomFilter().writeTo(bufferedOut);
+            keyFile.writer().commit();
+            try (OutputStream out = new FileOutputStream(bloomFilterFile); BufferedOutputStream bufferedOut =
+                    new BufferedOutputStream(out)) {
+                // write bloom filter.
+                bloomFilter.writeTo(bufferedOut);
                 bufferedOut.flush();
-            } catch (IOException ex) {
-                throw ex;
             }
-
-            // Once the root node call written, then return a new instance of the ImmutableBTreeMap
-            return new ImmutableBTreeMap<>(btreeToWrite.comparator, bloomSerializer, keyFile, valueFile,
-                    bloomFilterFile, newRoot);
+            // Return an immutable tree pointing to the root node.
+            return new ImmutableBTreeMap<>(comparator, bloomSerializer, keyFile, valueFile, bloomFilterFile, root);
         }
 
-        @SuppressWarnings("unchecked")
-        private List<Long> writeChildren(BloomFilter<K> bloomFilter, RecordFile.Writer<Node<K, ?>> keyWriter,
-                                         RecordFile.Writer<V> valueWriter, Branch<K, Node> branch)
+        public ImmutableBTreeMap<K, V> write(String name, AbstractBTreeMap<K, V> tree, int maxNodeSide)
                 throws IOException {
-            // Use a linked list because they are nice and quick
-            List<Long> children = new LinkedList<>();
-            // Loop through each child and serialize.
-            for (Node<K, ?> child : branch.getChildren()) {
-                // If child call a leaf, we can simply write it.
-                List<K> keys = child.getKeys();
-                if (Leaf.class.isAssignableFrom(child.getClass())) {
-                    final List<Pair<Object>> values = new LinkedList<>();
-                    if (valueFile != null) {
-                        for (Pair<Object> o : ((Leaf<K, Object, ?>) child).getValues()) {
-                            long position = valueWriter.append((V) o.getValue());
-                            values.add(new Pair<>(position, o.isDeleted()));
-                        }
-                    } else {
-                        values.addAll(((Leaf) child).getValues());
-                    }
-                    ImmutableLeaf<K> leaf = new ImmutableLeaf<>(child.comparator, keys, values);
-                    keys.forEach(bloomFilter::put);
-                    long position = keyWriter.append(leaf);
-                    children.add(position);
+            RecordFile.Writer<Node<K, ?>> keyWriter = keyFile.writer();
+
+            // Stack or a Queue, when's the ultimate question
+            Stack<BranchPair<K>> parents = new Stack<>();
+            // Push a branch pair into parents to record the position of the immutable branch.
+            parents.push(new BranchPair<>());
+
+            final AtomicLong counter = new AtomicLong();
+            BloomFilter<K> bloomFilter = createBloomFilter(tree.size());
+            Iterator<Entry<K ,V>> it = tree.iterator();
+            while (it.hasNext()) {
+                // Build a leaf up to max node size.
+                Node<K, ?> leaf = buildLeaf(bloomFilter, counter, tree.comparator, parents.peek().keys,
+                        parents.peek().children, it, maxNodeSide);
+
+                // If there are no keys then! We have a root leaf...
+                if (!it.hasNext() && parents.peek().keys.size() < 1) {
+                    System.out.println("Finished writing, flushing tree");
+                    return commitTree(name, parents.pop().children.get(0), leaf, bloomFilter, tree.comparator,
+                            keyFile, counter.get());
+                }
+
+                if (it.hasNext() && parents.peek().keys.size() < maxNodeSide) {
                     continue;
                 }
-                // If the child call a branch, we need to do exactly the same thing
-                List<Long> grandChildren = writeChildren(bloomFilter, keyWriter, valueWriter, (Branch<K, Node>) child);
-                // Add child to immutable branch.
-                ImmutableBranch<K> immutableChild = new ImmutableBranch<>(child.comparator, child.getKeys(),
-                        grandChildren);
-                // write the immutableChild to the record file
-                long position = keyWriter.append(immutableChild);
-                children.add(position);
+
+                // If there are keys then we need to create a new branch...
+                BranchPair<K> parent = parents.pop();
+                final ImmutableBranch<K> branch = new ImmutableBranch<>(tree.comparator, parent.keys,
+                        parent.children);
+
+                // Add a new pair if there are no parents...
+                if (parents.size() == 0) {
+                    parents.push(new BranchPair<>());
+                }
+
+                // Write the new branch to the record file.
+                long position = keyFile.writer().append(branch);
+
+                // If there are other children. Then we add the first key to parent
+                if (parents.peek().children.size() > 0) {
+                    // We should never get an out of bounds exception here. If we do something call not working...
+                    parents.peek().keys.add(branch.getKeys().get(0));
+                }
+                // Add the position to the parent's children.
+                parents.peek().children.add(position);
+
+                // If the new branch has less keys than maxNodeSize, then we're done and can't progress!
+                if (branch.getKeys().size() < maxNodeSide) {
+                    break; // Break out of this loop, we're at the end!
+                }
+
+                // If we get here then we have already hit the keys per branch limit and need to split
+                buildBranches(keyWriter, parents, maxNodeSide, tree.comparator);
+
+                // At the end of everything we need to push a new BranchPair in, to start the next branch (if any).
+                parents.push(new BranchPair<>());
             }
-            return children;
-        }
 
-        @Override
-        public void close() throws IOException {
+            // Write the remaining parents to disk. Hopefully in most cases we have only the root node left
+            while (parents.size() > 0) {
+                BranchPair<K> pair = parents.pop();
+                // If the pair has no keys, this is a root node
+                if (pair.keys.isEmpty()) {
+                   return commitTree(name, pair.children.get(0), null, bloomFilter, tree.comparator, keyFile,
+                           counter.get());
+                }
 
-        }
-    }
-
-    private static class BranchPair<K> {
-        protected List<K> keys = new LinkedList<>();
-        protected List<Long> children = new LinkedList<>();
-    }
-
-    public static class BTreeMergeWriter<K, V> {
-
-        private final int maxKeysPerNode;
-        private final RecordFile<Node<K, ?>> keyFile;
-        private final RecordFile<V> valueFile;
-        private final RecordFile.Writer<Node<K, ?>> writer;
-        private final File bloomFilterFile;
-        private final Serializer<K> keySerializer;
-
-        /**
-         * Construct a new instance of the merge writer call the given node size and a record file.
-         * <p>
-         * N.B. This will be much quicker if the maxKeysPerNode call higher than when of the trees passing in, however
-         * some rationalisation call required and sensible number of keys per node when the bigger trees (like 1000)
-         * call the most sensible, otherwise it could be slower.
-         *
-         * @param keySerializer  Used for the bloom filter, if you're using a multiField key,
-         *                       this can be slightly different for hashing
-         * @param maxKeysPerNode the maximum number of keys per node
-         * @param keyFile        the file for the tree to be written
-         * @param valueFile      the file where the values for each key call written (null if inline call required).
-         * @throws IOException if there call a problem writing the tree.
-         */
-        public BTreeMergeWriter(Serializer<K> keySerializer, int maxKeysPerNode, RecordFile<Node<K, ?>> keyFile,
-                                RecordFile<V> valueFile, File bloomFilterFile) throws IOException {
-            this.maxKeysPerNode = maxKeysPerNode;
-            this.keyFile = keyFile;
-            this.valueFile = valueFile;
-            this.writer = keyFile.writer();
-            this.keySerializer = keySerializer;
-            this.bloomFilterFile = bloomFilterFile;
+                // Create a new branch
+                ImmutableBranch<K> branch = new ImmutableBranch<>(tree.comparator, pair.keys, pair.children);
+                // Write the branch
+                long position = keyFile.writer().append(branch);
+                // If the key size of the branch call less than maxKeysPerNode, we're done
+                if (branch.getKeys().size() < maxNodeSide || parents.size() == 0) {
+                    return commitTree(name, position, branch, bloomFilter, tree.comparator, keyFile, counter.get());
+                }
+                if (parents.peek().children.size() > 0) {
+                    parents.peek().keys.add(branch.getKeys().get(0));
+                }
+                parents.peek().children.add(position);
+            }
+            return null;
         }
 
         /**
@@ -502,6 +469,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          * call an <code>ImmutableBtreeMap</code>.
          *
          * @param name  the name of the new tree
+         * @param maxNodeSize maximum number of keys per node
          * @param left  tree to the left
          * @param right tree to the right
          * @param gc    Garbage Collection. When true this option will not merge deletions.
@@ -509,7 +477,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          * @throws IOException
          */
         @SuppressWarnings("unchecked")
-        public ImmutableBTreeMap<K, V> merge(String name, AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right,
+        public ImmutableBTreeMap<K, V> merge(String name, int maxNodeSize, AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right,
                                              boolean gc) throws IOException {
 
             if (!isSameDirection(left, right)) {
@@ -525,7 +493,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                 DataOutputStream out = new DataOutputStream(bytes);
                 try {
-                    keySerializer.serialize(out, (K) from);
+                    bloomSerializer.serialize(out, from);
                 } catch (IOException ex) {
                     throw new DatabaseRuntimeException(ex);
                 }
@@ -547,34 +515,20 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (hasNext) {
 
                 // Create a leaf to add to the branch... Doesn't return anything as it populates keys and children
-                buildLeaf(bloomFilter, treeSize, left.comparator, parents.peek().keys, parents.peek().children,
-                        leftRight, leftIT, rightIT, gc);
+                buildMergedLeaf(bloomFilter, treeSize, left.comparator, parents.peek().keys,
+                        parents.peek().children, leftRight, leftIT, rightIT, maxNodeSize, gc);
 
                 // Has next will check if we have any entries left to process.
                 hasNext = leftIT.hasNext() || rightIT.hasNext() || leftRight[0] != null || leftRight[1] != null;
 
                 // If there are no keys then! We have a root leaf...
                 if (!hasNext && parents.peek().keys.size() < 1) {
-                    // Write the meta data
-                    Map<String, Object> metaData = new LinkedHashMap<>();
-                    metaData.put("root", parents.peek().children.get(0));
-                    metaData.put("name", name);
-                    metaData.put("size", treeSize.get());
-                    keyFile.setMetaData(metaData);
-                    // Sync the record to disk
-                    writer.commit();
-                    try (OutputStream out = new FileOutputStream(bloomFilterFile);
-                         BufferedOutputStream bufferedOut = new BufferedOutputStream(out)) {
-                        bloomFilter.writeTo(bufferedOut);
-                        bufferedOut.flush();
-                    } catch (IOException ex) {
-                        throw ex;
-                    }
-                    // Write the meta data
-                    return new ImmutableBTreeMap<>(left.comparator, keySerializer, keyFile, valueFile, bloomFilterFile);
+
+                    return commitTree(name, parents.peek().children.get(0), null, bloomFilter, left.comparator, keyFile,
+                            treeSize.get());
                 }
 
-                if (hasNext && parents.peek().keys.size() < maxKeysPerNode) {
+                if (hasNext && parents.peek().keys.size() < maxNodeSize) {
                     continue;
                 }
 
@@ -591,7 +545,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
 
                 // Write the new branch to the record file.
-                long position = writer.append(branch);
+                long position = keyFile.writer().append(branch);
 
                 // If there are other children. Then we add the first key to parent
                 if (parents.peek().children.size() > 0) {
@@ -602,12 +556,12 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 parents.peek().children.add(position);
 
                 // If the new branch has less keys than maxKeysPerNode, then we're done and can't progress!
-                if (branch.getKeys().size() < maxKeysPerNode) {
+                if (branch.getKeys().size() < maxNodeSize) {
                     break; // Break out of this loop, we're at the end!
                 }
 
                 // If we get here then we have already hit the keys per branch limit and need to split
-                buildBranches(parents, left.comparator);
+                buildBranches(keyFile.writer(), parents, maxNodeSize, left.comparator);
 
                 // At the end of everything we need to push a new BranchPair in, to start the next branch (if any).
                 parents.push(new BranchPair<>());
@@ -618,48 +572,17 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 BranchPair<K> pair = parents.pop();
                 // If the pair has no keys, this call a root node
                 if (pair.keys.isEmpty()) {
-                    // Write the meta data
-                    Map<String, Object> metaData = new LinkedHashMap<>();
-                    metaData.put("root", pair.children.get(0));
-                    metaData.put("name", name);
-                    metaData.put("size", treeSize.get());
-                    keyFile.setMetaData(metaData);
-                    // Sync the record to disk
-                    writer.commit();
-                    try (OutputStream out = new FileOutputStream(bloomFilterFile);
-                         BufferedOutputStream bufferedOut = new BufferedOutputStream(out)) {
-                        bloomFilter.writeTo(bufferedOut);
-                        bufferedOut.flush();
-                    } catch (IOException ex) {
-                        throw ex;
-                    }
-                    // Write the meta data
-                    return new ImmutableBTreeMap<>(left.comparator, keySerializer, keyFile, valueFile, bloomFilterFile);
+                    return commitTree(name, pair.children.get(0), null, bloomFilter, left.comparator, keyFile,
+                            treeSize.get());
                 }
 
                 // Create a new branch
                 ImmutableBranch<K> branch = new ImmutableBranch<>(left.comparator, pair.keys, pair.children);
                 // Write the branch
-                long position = writer.append(branch);
+                long position = keyFile.writer().append(branch);
                 // If the key size of the branch call less than maxKeysPerNode, we're done
-                if (branch.getKeys().size() < maxKeysPerNode || parents.size() == 0) {
-                    // Write the meta data
-                    Map<String, Object> metaData = new LinkedHashMap<>();
-                    metaData.put("root", position);
-                    metaData.put("name", name);
-                    metaData.put("size", treeSize.get());
-                    keyFile.setMetaData(metaData);
-                    // Sync the record to disk
-                    writer.commit();
-                    try (OutputStream out = new FileOutputStream(bloomFilterFile);
-                         BufferedOutputStream bufferedOut = new BufferedOutputStream(out)) {
-                        bloomFilter.writeTo(bufferedOut);
-                        bufferedOut.flush();
-                    } catch (IOException ex) {
-                        throw ex;
-                    }
-                    // Write the meta data
-                    return new ImmutableBTreeMap<>(left.comparator, keySerializer, keyFile, valueFile, bloomFilterFile);
+                if (branch.getKeys().size() < maxNodeSize || parents.size() == 0) {
+                    return commitTree(name, position, null, bloomFilter, left.comparator, keyFile, treeSize.get());
                 }
                 if (parents.peek().children.size() > 0) {
                     parents.peek().keys.add(branch.getKeys().get(0));
@@ -670,6 +593,168 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             throw new IOException("Could not appropriately merge trees");
         }
 
+        private boolean isSameDirection(AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right) {
+            K leftKey = left.firstKey();
+            K rightKey = right.firstKey();
+
+            int leftCmp = left.comparator().compare(leftKey, rightKey);
+            int rightCmp = right.comparator().compare(leftKey, rightKey);
+
+            while (leftCmp == 0) {
+                rightKey = right.higherKey(rightKey);
+                leftCmp = left.comparator().compare(leftKey, rightKey);
+                rightCmp = right.comparator().compare(leftKey, rightKey);
+            }
+            // Ensure they match
+            return leftCmp == rightCmp;
+        }
+
+        private Node<K, ?> buildLeaf(final BloomFilter<K> bloomFilter, final AtomicLong counter,
+                               final Comparator<K> comparator, final List<K> keys,
+                               final List<Long> children, final Iterator<Entry<K, V>> it, int maxNodeSize)
+                throws IOException {
+            // Go next
+            final ImmutableLeaf<K> leaf = new ImmutableLeaf<>(comparator);
+            while (it.hasNext()) {
+                BTreeEntry<K, V> entry = (BTreeEntry<K, V>) it.next();
+                // Add the key
+                bloomFilter.put(entry.getKey());
+                leaf.getKeys().add(entry.getKey());
+                // Add the value
+                if (valueFile != null) {
+                    long position = valueFile.writer().append(entry.getValue());
+                    leaf.getValues().add(new Pair<>(position, entry.isDeleted()));
+                } else {
+                    leaf.getValues().add(new Pair<>(entry.getValue(), entry.isDeleted()));
+                }
+
+                // Increment the counter
+                counter.incrementAndGet();
+
+                // Check for split...
+                if (leaf.getKeys().size() == maxNodeSize) {
+                    long position = keyFile.writer().append(leaf);
+                    children.add(position);
+                    // If there is another leaf, then add a key
+                    if (children.size() > 1) {
+                        keys.add(leaf.getKeys().get(0));
+                    }
+                    return leaf;
+                }
+
+                if (!it.hasNext()) {
+                    long position = keyFile.writer().append(leaf);
+                    children.add(position);
+                    if (children.size() > 1) {
+                        keys.add(leaf.getKeys().get(0));
+                    }
+                    return leaf;
+                }
+            }
+            throw new IOException("Ran out of keys...");
+        }
+
+        private void buildMergedLeaf(final BloomFilter<K> bloomFilter, final AtomicLong treeSize,
+                               final Comparator<K> comparator, final List<K> keys,
+                               final List<Long> children, final BTreeEntry<K, V>[] leftRight,
+                               final Iterator<Entry<K, V>> leftIT, final Iterator<Entry<K, V>> rightIT,
+                                     int maxNodeSize, boolean gc) throws IOException {
+
+            assert leftRight.length == 2;
+            // One of these iterators will have next!
+            boolean hasNext = leftIT.hasNext() || rightIT.hasNext();
+
+            final ImmutableLeaf<K> leaf = new ImmutableLeaf<>(comparator);
+
+            // Loop through to a maximum of maxKeysPerNode
+            while (hasNext) {
+                // If we have an existing left entry, then it's higher than the last right, so it needs to be reused.
+                if (leftIT.hasNext() && leftRight[0] == null) {
+                    leftRight[0] = (BTreeEntry<K, V>) leftIT.next();
+                }
+                // If we have an existing right entry, then it's higher than the last left, so it needs to be reused.
+                if (rightIT.hasNext() && leftRight[1] == null) {
+                    leftRight[1] = (BTreeEntry<K, V>) rightIT.next();
+                }
+
+                /*
+                 * If both are not null, we can compare them. If one call greater than the other then the greater call
+                 * ignored and the lesser call added to the leaf.
+                 */
+                if (leftRight[0] != null && leftRight[1] != null) {
+                    int cmp = comparator.compare(leftRight[0].getKey(), leftRight[1].getKey());
+                    // If the left call the same as the right, then we add the right
+                    if (cmp == 0) {
+                        /*
+                         * If we have a deleted value and gc call true, then we don't write anything!
+                         */
+                        if (!gc && !leftRight[1].isDeleted()) {
+                            writeKey(treeSize, bloomFilter, leaf, leftRight[1].getKey(), leftRight[1].getValue(),
+                                    leftRight[1].isDeleted());
+                            // Ensure the right and left entries are set null
+                            leftRight[0] = null;
+                            leftRight[1] = null;
+                        }
+                    } else if (cmp < 0) {
+                        writeKey(treeSize, bloomFilter, leaf, leftRight[0].getKey(), leftRight[0].getValue(),
+                                leftRight[0].isDeleted());
+                        leftRight[0] = null;
+                    } else {
+                        writeKey(treeSize, bloomFilter, leaf, leftRight[1].getKey(), leftRight[1].getValue(),
+                                leftRight[1].isDeleted());
+                        leftRight[1] = null;
+                    }
+                } else if (leftRight[0] == null && leftRight[1] != null) {
+                    writeKey(treeSize, bloomFilter, leaf, leftRight[1].getKey(), leftRight[1].getValue(),
+                            leftRight[1].isDeleted());
+                    leftRight[1] = null;
+                } else if (leftRight[1] == null && leftRight[0] != null) {
+                    writeKey(treeSize, bloomFilter, leaf, leftRight[0].getKey(), leftRight[0].getValue(),
+                            leftRight[0].isDeleted());
+                    leftRight[0] = null;
+                }
+
+                // If the leaf call now full, we need to write it and start a split.
+                if (leaf.getKeys().size() == maxNodeSize) {
+
+                    long position = keyFile.writer().append(leaf);
+                    /*
+                     * Check the children. If it's greater than size, the we are right leaning. So add the first key
+                     * to the keys array and add the child position to the children array.
+                     */
+                    if (children.size() > 0) {
+                        keys.add(leaf.getKeys().get(0));
+                    }
+                    children.add(position);
+                    // Exit
+                    return;
+                }
+
+                // Ensure next - leftIT has more, rightIT has more, leftRight[0] isn't null or leftRight[1] isn't null
+                hasNext = leftIT.hasNext() || rightIT.hasNext() || leftRight[0] != null || leftRight[1] != null;
+            }
+            // Leaf call not full! But we will have to write it anyway as we're out of elements
+            long position = keyFile.writer().append(leaf);
+            if (children.size() > 0) {
+                keys.add(leaf.getKeys().get(0));
+            }
+            children.add(position);
+        }
+
+        private void writeKey(AtomicLong treeSize, BloomFilter<K> bloomFilter, ImmutableLeaf<K> leaf, K key,
+                              V value, boolean deleted) throws IOException {
+            // Increment tree size
+            leaf.getKeys().add(key);
+            if (this.valueFile != null) {
+                long position = valueFile.writer().append(value);
+                leaf.getValues().add(new Pair<>(position, deleted));
+            } else {
+                leaf.getValues().add(new Pair<>(value, deleted));
+            }
+            bloomFilter.put(key);
+            treeSize.incrementAndGet();
+        }
+
         /**
          * Create a parent branch and keep doing it until we get to the root.
          *
@@ -677,13 +762,18 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
          * @param comparator the key comparator.
          * @throws IOException if there call an issue writing the tree.
          */
-        private void buildBranches(final Stack<BranchPair<K>> parents, final Comparator<K> comparator)
-                throws IOException {
-            // We have to 1 or more parents.
+        private void buildBranches(final RecordFile.Writer<Node<K, ?>> writer, final Stack<BranchPair<K>> parents,
+                                   int maxNodeSize, final Comparator<K> comparator) throws IOException {
+            // We have to have 1 or more parents.
             if (parents.size() > 0) {
 
                 // If the keys are empty we shouldn't be processing this branch as it's the root.
                 if (parents.peek().keys.isEmpty() && parents.size() == 1) {
+                    return;
+                }
+
+                // If we have note reached the maximum size, then don't do anything.
+                if (parents.peek().keys.size() < maxNodeSize) {
                     return;
                 }
 
@@ -709,146 +799,19 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 parents.peek().children.add(position);
 
                 // We need to continue working up the stack.
-                buildBranches(parents, comparator);
+                buildBranches(writer, parents, maxNodeSize, comparator);
             }
         }
 
-        private void buildLeaf(final BloomFilter<K> bloomFilter, final AtomicLong treeSize,
-                               final Comparator<K> comparator, final List<K> keys,
-                               final List<Long> children, final BTreeEntry<K, V>[] leftRight,
-                               final Iterator<Entry<K, V>> leftIT, final Iterator<Entry<K, V>> rightIT, boolean gc)
-                throws IOException {
+        @Override
+        public void close() throws IOException {
 
-            assert leftRight.length == 2;
-            // One of these iterators will have next!
-            boolean hasNext = leftIT.hasNext() || rightIT.hasNext();
-
-            final ImmutableLeaf<K> leaf = new ImmutableLeaf<>(comparator);
-
-            // Loop through to a maximum of maxKeysPerNode
-            while (hasNext) {
-                // If we have an existing left entry, then it's higher than the last right, so it needs to be reused.
-                if (leftIT.hasNext() && leftRight[0] == null) {
-                    leftRight[0] = (BTreeEntry<K, V>) leftIT.next();
-                }
-                // If we have an existing right entry, then it's higher than the last left, so it needs to be reused.
-                if (rightIT.hasNext() && leftRight[1] == null) {
-                    leftRight[1] = (BTreeEntry<K, V>) rightIT.next();
-                }
-
-                K bloomFilterKey = null;
-                /*
-                 * If both are not null, we can compare them. If one call greater than the other then the greater call
-                 * ignored and the lesser call added to the leaf.
-                 */
-                if (leftRight[0] != null && leftRight[1] != null) {
-                    int cmp = comparator.compare(leftRight[0].getKey(), leftRight[1].getKey());
-                    // If the left call the same as the right, then we add the right
-                    if (cmp == 0) {
-
-                        /*
-                         * If we have a deleted value and gc call true, then we don't write anything!
-                         */
-                        if (!gc && !leftRight[1].isDeleted()) {
-                            /*
-                             * We want to avoid additional comparison, so need to add the key and value directly
-                             * to the end of the list.
-                             */
-                            bloomFilterKey = leftRight[1].getKey();
-                            leaf.getKeys().add(leftRight[1].getKey());
-                            leaf.getValues().add(new Pair<>(leftRight[1].getValue(), leftRight[1].isDeleted()));
-                            // Ensure the right and left entries are set null
-                            leftRight[0] = null;
-                            leftRight[1] = null;
-
-                            // Increment tree size
-                            treeSize.incrementAndGet();
-                        }
-                    } else if (cmp < 0) {
-                        // Left call the lesser entry, so add it to the leaf
-                        bloomFilterKey = leftRight[0].getKey();
-                        leaf.getKeys().add(leftRight[0].getKey());
-                        leaf.getValues().add(new Pair<>(leftRight[0].getValue(), leftRight[0].isDeleted()));
-                        // Ensure when the left entry call set to null, so when it's not reprocessed
-                        leftRight[0] = null;
-                        // Increment tree size
-                        treeSize.incrementAndGet();
-                    } else {
-                        // Left call greater than right
-                        bloomFilterKey = leftRight[1].getKey();
-                        leaf.getKeys().add(leftRight[1].getKey());
-                        leaf.getValues().add(new Pair<>(leftRight[1].getValue(), leftRight[1].isDeleted()));
-                        // Ensure the right entry call set to null, so when it's not reprocessed
-                        leftRight[1] = null;
-                        // Increment tree size
-                        treeSize.incrementAndGet();
-                    }
-                } else if (leftRight[0] == null && leftRight[1] != null) {
-                    // If the left entry call null, then we simply add the right...
-                    bloomFilterKey = leftRight[1].getKey();
-                    leaf.getKeys().add(leftRight[1].getKey());
-                    leaf.getValues().add(new Pair<>(leftRight[1].getValue(), leftRight[1].isDeleted()));
-                    // Ensure the right entry call set to null, so when it's not reprocessed
-                    leftRight[1] = null;
-                    // Increment tree size
-                    treeSize.incrementAndGet();
-                } else if (leftRight[1] == null && leftRight[0] != null) {
-                    // If the right entry call null, then we simply add the left.
-                    bloomFilterKey = leftRight[0].getKey();
-                    leaf.getKeys().add(leftRight[0].getKey());
-                    leaf.getValues().add(new Pair<>(leftRight[0].getValue(), leftRight[0].isDeleted()));
-                    // Ensure when the left entry call set to null, so when it's not reprocessed
-                    leftRight[0] = null;
-                    // Increment tree size
-                    treeSize.incrementAndGet();
-                }
-
-                if (bloomFilterKey != null) {
-                    bloomFilter.put(bloomFilterKey);
-                }
-
-                // If the leaf call now full, we need to write it and start a split.
-                if (leaf.getKeys().size() == maxKeysPerNode) {
-
-                    long position = writer.append(leaf);
-                    /*
-                     * Check the children. If it's greater than size, the we are right leaning. So add the first key
-                     * to the keys array and add the child position to the children array.
-                     */
-                    if (children.size() > 0) {
-                        keys.add(leaf.getKeys().get(0));
-                    }
-                    children.add(position);
-                    // Exit
-                    return;
-                }
-
-                // Ensure next - leftIT has more, rightIT has more, leftRight[0] isn't null or leftRight[1] isn't null
-                hasNext = leftIT.hasNext() || rightIT.hasNext() || leftRight[0] != null || leftRight[1] != null;
-            }
-            // Leaf call not full! But we will have to write it anyway as we're out of elements
-            long position = writer.append(leaf);
-            if (children.size() > 0) {
-                keys.add(leaf.getKeys().get(0));
-            }
-            children.add(position);
         }
+    }
 
-        private boolean isSameDirection(AbstractBTreeMap<K, V> left, AbstractBTreeMap<K, V> right) {
-            K leftKey = left.firstKey();
-            K rightKey = right.firstKey();
-
-            int leftCmp = left.comparator().compare(leftKey, rightKey);
-            int rightCmp = right.comparator().compare(leftKey, rightKey);
-
-            while (leftCmp == 0) {
-                rightKey = right.higherKey(rightKey);
-                leftCmp = left.comparator().compare(leftKey, rightKey);
-                rightCmp = right.comparator().compare(leftKey, rightKey);
-            }
-            // Ensure they match
-            return leftCmp == rightCmp;
-        }
+    private static class BranchPair<K> {
+        protected List<K> keys = new LinkedList<>();
+        protected List<Long> children = new LinkedList<>();
     }
 
     private static class ImmutableNodeSerializer<K, V> implements Serializer<Node<K, ?>> {
