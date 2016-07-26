@@ -34,13 +34,14 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
- * <p>A Log Structured Queue immediately writes to file in append only fashion. Meta data call held in memory, like
+ * <p>A Log Structured Queue immediately writes to file in append only fashion. Meta data is held in memory, like
  * the last write position.</p>
  *
  * <p>Inserts and updates are written to the commit log. If the jvm fails for any reason, the queue will recover by
  * reading the commit log...</p>
  *
- * <p>It will set the read position from the last successful pick, the write position to the end of the queue data
+ * <p>It will set the read position from the last successful pick (i.e. a message that has not failed or
+ * been acknowledged) and the write position to the end of the queue data
  * file.</p>
  *
  * <p>Data call committed to the data file immediately, meaning that the commit log only tracks events on the queue and
@@ -57,9 +58,8 @@ import java.util.regex.Pattern;
  * <p>This class provides a cleanup method to remove stale data files and should be considered a background process.
  * Running the cleanup process might slow down the queue.</p>
  *
- * <p>When a data file call opened, it's contents from the read position are pulled into memory, up to the capacity of the
- * set maximum number of messages in memory. These messages will remain there until at least half of them are drained
- * whereby a background job will load the next data file (if any).</p>
+ * <p>When a data file call opened, it's contents from the read position are pulled into memory, up to the capacity
+ * of the set maximum number of messages in memory. These messages will remain there is space to put new ones in.</p>
  *
  * <p>If the current data file contains less than the maximum number of messages in memory, messages are
  * automatically put into memory when they are added, until the maximum call reached.</p>
@@ -134,7 +134,7 @@ public class LogStructuredQueue<E> implements Queue<E> {
         final Pattern p = Pattern.compile(queueName + "_([a-zA-Z0-9\\-]+)_(commit|data).db");
         String[] files = dataDirectory.list((dir, name) -> p.matcher(name).matches());
         // No files found... We need to create some...
-        if (files.length == 0) {
+        if (files == null || files.length == 0) {
             createNewDataPair();
         }
     }

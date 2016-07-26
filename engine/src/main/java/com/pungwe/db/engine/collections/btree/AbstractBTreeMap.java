@@ -520,18 +520,39 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             return super.subMap(fromKey, fromInclusive, toKey, toInclusive);
         }
 
+        @SuppressWarnings("unchecked")
+        @Override
+        public NavigableSet<K> navigableKeySet() {
+            return keySet();
+        }
+
+        @Override
+        public NavigableSet<K> keySet() {
+            return new KeySet<>((AbstractBTreeMap<K, Object>)this, low, lowInclusive, high, highInclusive);
+        }
+
+        @Override
+        public NavigableSet<K> descendingKeySet() {
+            return descendingMap().keySet();
+        }
+
+        @Override
+        public Set<Entry<K, V>> entrySet() {
+            return new EntrySet<>(this);
+        }
+
         @Override
         public void clear() {
             // FIXME: We should be able to clear a range...
         }
 
         @Override
-        public Iterator<Entry<K,V>> iterator() {
+        public Iterator<Entry<K, V>> iterator() {
             return iterator(this.low, this.lowInclusive, this.high, this.highInclusive);
         }
 
         @Override
-        public Iterator<Entry<K,V>> reverseIterator() {
+        public Iterator<Entry<K, V>> reverseIterator() {
             return reverseIterator(this.high, this.highInclusive, this.low, this.lowInclusive);
         }
 
@@ -542,7 +563,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
 
         @Override
         protected Iterator<Entry<K, V>> reverseIterator(K from, boolean fromInclusive, K to,
-                                                              boolean toInclusive) {
+                                                        boolean toInclusive) {
             return parent.reverseIterator(from, fromInclusive, to, toInclusive);
         }
 
@@ -732,6 +753,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             return toArray(new Object[0]);
         }
 
+        @SuppressWarnings("unchecked")
         @Override
         public <T> T[] toArray(final T[] a) {
             if (a.length >= map.entrySet().size()) {
@@ -740,9 +762,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
                     a[i.getAndIncrement()] = (T) k;
                 });
             }
-            return (T[]) map.entrySet().stream().map((e) -> {
-                return e.getKey();
-            }).toArray();
+            return (T[]) map.entrySet().stream().map(Entry::getKey).toArray();
         }
 
         @Override
