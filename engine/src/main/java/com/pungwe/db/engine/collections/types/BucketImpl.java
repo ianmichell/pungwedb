@@ -47,7 +47,6 @@ import java.util.Map;
 public class BucketImpl<T> implements Bucket<T> {
 
     protected BucketImpl(String name, Map<String, Object> metaData) {
-
     }
 
     public BucketImpl<T> getInstance(String name) {

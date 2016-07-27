@@ -414,7 +414,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 if (leaf == null) {
                     return false;
                 }
-                if (leafPos.get() >= leaf.getValues().size()) {
+                if (leafPos.get() >= leaf.getKeys().size()) {
                     advance();
                 }
                 while (leaf != null && excludeDeleted) {
@@ -464,6 +464,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 node = ((BTreeBranch<K>) node).getChildren().get(0);
             }
             leaf = (BTreeLeaf<K, V>) node;
+            leafPos.set(0);
         }
 
         @SuppressWarnings("unchecked")
