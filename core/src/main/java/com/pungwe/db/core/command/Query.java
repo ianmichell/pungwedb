@@ -19,12 +19,12 @@ public class Query {
         this.predicate = new QueryPredicate(this);
     }
 
-    public static QueryPredicate select(String... fields) {
-        return new QueryPredicate(new Query(fields));
+    public static Query select(String... fields) {
+        return new Query(fields);
     }
 
     public FieldPredicate where(String field) {
-        return new FieldPredicate(predicate, field);
+        return predicate.field(field);
     }
 
     private static class QueryPredicate {
