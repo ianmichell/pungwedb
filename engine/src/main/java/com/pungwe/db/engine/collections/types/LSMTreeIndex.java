@@ -43,11 +43,12 @@ import java.util.stream.Stream;
 public class LSMTreeIndex {
     private final File directory;
     private final String name;
+    private final Set<String> fields;
     private final Comparator<Object> comparator;
     private final Serializer<AbstractBTreeMap.Node<Object, ?>> serializer;
     private final ConcurrentNavigableMap<UUID, AbstractBTreeMap<Object, Object>> trees = new ConcurrentSkipListMap<>(
             UUID::compareTo);
-    private boolean allowDuplicates = false;
+    private boolean unique = false;
 
     public static LSMTreeIndex get(File directory, String name, Map<String, Object> config) throws IOException {
         return new LSMTreeIndex(directory, name, config);
@@ -60,6 +61,8 @@ public class LSMTreeIndex {
         if (!config.containsKey("fields") && !Map.class.isAssignableFrom(config.get("fields").getClass())) {
             throw new IllegalArgumentException("Index config should be key value pairs - String key, Number value");
         }
+        //
+        this.fields = ((Map<String, Integer>)config.get("fields")).keySet();
         // Construct the comparator
         this.comparator = buildComparator((Map<String, Integer>)config.get("fields"));
         // Construct the serializer
@@ -79,7 +82,17 @@ public class LSMTreeIndex {
         return null;
     }
 
+    /**
+     * Creates a stream of the entire index. This is used for scanning the index for values and depending on size, can
+     * might not be the fastest method of retrieval. If you have to scan an entire index and then
+     *
+     * @return a stream of entries...
+     */
     public Stream<LSMEntry> stream() {
+        return entrySet().stream();
+    }
+
+    public Set<LSMEntry> entrySet() {
         // Streams can be filtered.
         return new AbstractSet<LSMEntry>() {
 
@@ -92,17 +105,22 @@ public class LSMTreeIndex {
             public int size() {
                 return -1;
             }
-        }.stream();
+        };
     }
 
-    public void addToIndex(DBObject object) {
+    public void add(DBObject object) {
+        // If we have duplicates and they are allowed we store a copy of the id and the index key.
+        if (fields.size() > 1 && unique) {
 
+        }
+    }
+
+    public void update(Object originalKey, DBObject value) {
+        // Update a document based on it's original key
     }
 
     private void configure(Map<String, Object> config) throws IOException {
-        if (config.containsKey("allowDuplicates")) {
-            allowDuplicates = (Boolean)config.get("allowDuplicates");
-        }
+        unique = (Boolean)config.getOrDefault("unique", false);
         // Find the files for bloom filter and index
         Pattern p = FileUtils.uuidFilePattern(name, "index.db", "_");
         Pattern pb = FileUtils.uuidFilePattern(name, "bloom.db", "_");
@@ -132,10 +150,10 @@ public class LSMTreeIndex {
     }
 
     private Comparator<Object> buildComparator(Map<String, Integer> fields) {
-        if (fields.size() < 2) {
+        if (fields.size() < 2 && unique) {
             return singleFieldComparator(fields);
         }
-        // We can treat the values as maps...
+        // We can treat the values as maps... If the index unique value is set to false, then we store the id as well...
         return multiFieldComparator(fields);
     }
 
@@ -269,21 +287,27 @@ public class LSMTreeIndex {
                     last = e;
                     continue;
                 }
-                // Compare last to current
+                // Compare last to current. If last is less than current, then we don't need to do anything
                 int cmp = index.comparator.compare(last.getValue().getKey(), e.getValue().getKey());
                 // If they're the same, then set last
                 if (cmp == 0) {
                     // Add last to remove...
                     remove.add(last);
-                    // Ensure the current is not deleted
+                    // Ensure the current object is not deleted
                     if (e.getValue().isDeleted()) {
+                        // Add the entry to the removals collection...
                         remove.add(e);
+                        // Reset last...
                         last = null;
-                    } else {
-                        last = e;
+                        continue;
                     }
-                } else if (cmp > 0) {
-                    
+                    last = e;
+                    continue;
+                }
+
+                // If last is higher than the current entry, then set last to e and continue
+                if (cmp > 0) {
+                    last = e;
                 }
             }
             // Remove stale entries...
@@ -293,6 +317,8 @@ public class LSMTreeIndex {
                 advance();
                 return;
             }
+            // Remove last from found
+            found.remove(last.getKey());
             // set next...
             next = new LSMEntry(last.getValue().getKey(), last.getValue().getValue());
         }
