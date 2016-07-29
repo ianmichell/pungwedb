@@ -222,7 +222,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     }
 
     @Override
-    protected Iterator<Entry<K, V>> mergeIterator() {
+    public Iterator<Entry<K, V>> mergeIterator() {
         return mergeIterator(null, false, null, false);
     }
 

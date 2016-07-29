@@ -168,6 +168,8 @@ public class Promise<T> {
         return predicate.holder().evaluationResult.get();
     }
 
+
+
     public interface FailCallback {
         void call(Throwable error);
     }

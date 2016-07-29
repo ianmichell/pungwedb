@@ -13,16 +13,27 @@
  */
 package com.pungwe.db.engine.collections.types;
 
+import com.google.common.collect.ImmutableList;
 import com.pungwe.db.core.command.Query;
 import com.pungwe.db.core.concurrent.Promise;
+import com.pungwe.db.core.io.serializers.*;
 import com.pungwe.db.core.result.DeletionResult;
 import com.pungwe.db.core.result.InsertResult;
 import com.pungwe.db.core.result.QueryResult;
 import com.pungwe.db.core.result.UpdateResult;
 import com.pungwe.db.core.types.Bucket;
+import com.pungwe.db.core.types.DBObject;
+import com.pungwe.db.core.utils.TypeReference;
+import com.pungwe.db.engine.io.BasicRecordFile;
+import com.pungwe.db.engine.io.RecordFile;
 
-import java.util.List;
-import java.util.Map;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.util.*;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.regex.Pattern;
 
 /**
  * <p>This class manages a local database instance within the default storage engine. It's configured with a
@@ -44,28 +55,86 @@ import java.util.Map;
  *     </code>
  * </p>
  */
-public class BucketImpl<T> implements Bucket<T> {
+public class BucketImpl implements Bucket<DBObject> {
 
-    protected BucketImpl(String name, Map<String, Object> metaData) {
+    private static final String PRIMARY_INDEX_NAME = "primary";
+    private final ConcurrentMap<String, Object> metaData;
+    private final File directory;
+    private final String name;
+    private final NavigableMap<UUID, RecordFile<DBObject>> data = new ConcurrentSkipListMap<>(UUID::compareTo);
+    private final Map<String, LSMTreeIndex> indexes = new LinkedHashMap<>();
+    private final Serializer<DBObject> dbObjectSerializer = new DBObjectSerializer();
+
+    BucketImpl(File directory, String name) throws IOException {
+        this.directory = directory;
+        this.name = name;
+        this.metaData = new ConcurrentSkipListMap<>();
     }
 
-    public BucketImpl<T> getInstance(String name) {
-        return null;
+    BucketImpl(File directory, String name, ConcurrentMap<String, Object> metaData) throws IOException {
+        this.directory = directory;
+        this.name = name;
+        // This is a new database...
+        this.metaData = metaData;
     }
 
+    private void load() throws IOException {
+        // Load the meta data...
+        loadMetaData();
+        // Fetch all the data files...
+        loadDataFiles();
+        // Load indexes
+    }
+
+    private void loadMetaData() throws IOException {
+        // Find the meta data file.
+        File meta = new File(directory, name + "_meta.db");
+        boolean exists = meta.exists();
+        // If the meta file exists, then open a reader and pull the meta data out of it...
+        if (exists) {
+            RandomAccessFile raf = new RandomAccessFile(meta, "r");
+            Map<String, Object> read = new MapSerializer<>(new StringSerializer(), new ObjectSerializer())
+                    .deserialize(raf);
+            // Load the emta data...
+            metaData.putAll(read);
+        }
+    }
+
+    private void loadDataFiles() throws IOException {
+        Pattern p = Pattern.compile(name + "_([\\w\\d\\-]+)_data.db");
+        String[] files = directory.list((dir, name) -> p.matcher(name).matches());
+        if (files == null) {
+            return;
+        }
+        for (String file : files) {
+            String id = p.matcher(file).group(1);
+            data.put(UUID.fromString(id), new BasicRecordFile<>(new File(directory, file), null));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     @Override
     public Promise<List<String>> indexes() {
-        return null;
+        Collection<String> indexes = this.indexes.keySet();
+        List<String> result = ImmutableList.copyOf(indexes);
+        Promise.PromiseBuilder<List<String>> promise = Promise.build(new TypeReference<List<String>>() {});
+        promise.keep(result);
+        return promise.promise();
     }
 
     @Override
     public Promise<Void> createIndex(String name, Map<String, Object> options) {
+        // LSMTreeIndex builder should create and manage an index based on the configuration options...
         return null;
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public Promise<Boolean> containsIndex(String name) {
-        return null;
+        Collection<String> indexes = (Collection<String>)metaData.get("indexes");
+        Promise.PromiseBuilder<Boolean> builder = Promise.build(new TypeReference<Boolean>() {});
+        builder.keep(indexes != null && indexes.contains(name));
+        return builder.promise();
     }
 
     @Override
@@ -89,12 +158,12 @@ public class BucketImpl<T> implements Bucket<T> {
     }
 
     @Override
-    public Promise<T> findOne(Object id) {
+    public Promise<DBObject> findOne(Object id) {
         return null;
     }
 
     @Override
-    public Promise<UpdateResult> save(T... object) {
+    public Promise<UpdateResult> save(DBObject... object) {
         return null;
     }
 
@@ -104,7 +173,7 @@ public class BucketImpl<T> implements Bucket<T> {
     }
 
     @Override
-    public Promise<InsertResult> insert(T... object) {
+    public Promise<InsertResult> insert(DBObject... object) {
         return null;
     }
 

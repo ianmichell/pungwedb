@@ -340,7 +340,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     protected abstract Iterator<Entry<K,V>> reverseIterator(K fromKey, boolean fromInclusive, K toKey,
                                                                   boolean toInclusive);
 
-    protected abstract Iterator<Entry<K,V>> mergeIterator();
+    public abstract Iterator<Entry<K,V>> mergeIterator();
     protected abstract Iterator<Entry<K,V>> mergeIterator(K fromKey, boolean fromInclusive, K toKey,
                                                           boolean toInclusive);
 
@@ -568,7 +568,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
 
         @Override
-        protected Iterator<Entry<K, V>> mergeIterator() {
+        public Iterator<Entry<K, V>> mergeIterator() {
             return mergeIterator(low, lowInclusive, high, highInclusive);
         }
 
@@ -806,7 +806,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
     }
 
-    static final class EntrySet<K, V> implements NavigableSet<Entry<K, V>> {
+    protected static class EntrySet<K, V> implements NavigableSet<Entry<K, V>> {
 
         final AbstractBTreeMap<K, V> map;
 
