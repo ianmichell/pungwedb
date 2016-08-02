@@ -68,7 +68,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     @Override
     @SuppressWarnings("unchecked")
     protected BTreeEntry<K, V> putEntry(Entry<? extends K, ? extends V> entry) {
-        if (entry == null || entry.getKey() == null) {
+        if (entry == null) {
             return null;
         }
         lock.writeLock().lock();
@@ -125,7 +125,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         Node<K, ?>[] split = node.split();
         // New root node!!
         if (parents.isEmpty()) {
-            root = new BTreeBranch<K>(comparator);
+            root = new BTreeBranch<>(comparator);
             // Ensure next and previous are set.
             ((BTreeBranch<K>) root).put(key, split);
             return;
@@ -165,6 +165,12 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    @Override
+    public Set<BTreeEntry<K, V>> getEntries(Collection<K> keys) {
+        // Find all the leaves...
+        return null;
     }
 
     @Override

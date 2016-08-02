@@ -11,13 +11,12 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.pungwe.db.core.utils;
+package com.pungwe.db.core.utils.comparators;
+
+import org.joda.time.DateTime;
 
 import java.math.BigDecimal;
-import java.util.Calendar;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Created by ian on 28/07/2016.
@@ -35,8 +34,16 @@ public class GenericComparator implements Comparator<Object> {
 
     @Override
     public int compare(Object o1, Object o2) {
-        if (o1 == null || o2 == null) {
-            throw new IllegalArgumentException("Cannot contain null keys");
+        if (o1 == null && o2 == null) {
+            return 0;
+        } else if (o1 == null) {
+            return -1;
+        } else if (o2 == null) {
+            return 1;
+        }
+        // UUID
+        if (UUID.class.isAssignableFrom(o1.getClass()) && UUID.class.isAssignableFrom(o2.getClass())) {
+            return ((UUID)o1).compareTo((UUID)o2);
         }
         // Compare numbers
         if (Number.class.isAssignableFrom(o1.getClass()) && Number.class.isAssignableFrom(o2.getClass())) {
@@ -58,9 +65,13 @@ public class GenericComparator implements Comparator<Object> {
         if (Calendar.class.isAssignableFrom(o1.getClass()) && Calendar.class.isAssignableFrom(o2.getClass())) {
             return ((Calendar)o1).compareTo((Calendar)o2);
         }
+        // DateTime
+        if (DateTime.class.isAssignableFrom(o1.getClass()) && DateTime.class.isAssignableFrom(o2.getClass())) {
+            return ((DateTime)o1).compareTo((DateTime)o2);
+        }
         // Map
         if (Map.class.isAssignableFrom(o1.getClass()) && Map.class.isAssignableFrom(o2.getClass())) {
-            return -1;
+            return MapComparator.getInstance().compare((Map<?, ?>)o1, (Map<?, ?>)o2);
         }
         // Everything else...
         return Integer.compare(o1.hashCode(), o2.hashCode());

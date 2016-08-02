@@ -7,6 +7,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.pungwe.db.core.utils.Utils.getValue;
+
 /**
  * <p>
  * This class holds the relevant field information and predicates for a query during execution. It can test the values
@@ -193,52 +195,6 @@ public class Query {
             return testQueryPredicate(p.getOr(), value);
         }
         return pass;
-    }
-
-    private Optional<?> getValue(String field, Map<String, ?> value) {
-        if (value.containsKey(field)) {
-            return Optional.of(value.get(field));
-        }
-        // Split via dot notation...
-        String[] fieldSplit = field.split("\\.");
-        Object found = getValue(fieldSplit, value);
-        if (found == null) {
-            return Optional.empty();
-        }
-        return Optional.of(found);
-    }
-
-    private Object getValue(String[] fields, Map<?, ?> value) {
-        Object found = value.get(fields[0]);
-        // If it's null, we don't want it...
-        if (found == null) {
-            return null;
-        }
-        if (Collection.class.isAssignableFrom(found.getClass()) && fields.length > 1) {
-            // We only want the values if they are a map.
-            Collection<Map<?, ?>> values = ((Collection<?>)found).stream().filter(o -> o != null &&
-                    Map.class.isAssignableFrom(o.getClass())).map(o -> (Map<?, ?>)o).collect(Collectors.toList());
-            if (values.isEmpty()) {
-                return null;
-            }
-            return getCollectionOfValues(Arrays.copyOfRange(fields, 1, fields.length), values);
-        }
-        // Check if it's a map
-        if (Map.class.isAssignableFrom(found.getClass()) && fields.length > 1) {
-            return getValue(Arrays.copyOfRange(fields, 1, fields.length), (Map<?, ?>)found);
-        }
-        return found;
-    }
-
-    /**
-     * Walk through the collection of values.
-     * @param fields the fields that are fetched from inside the list of values
-     * @param values the values to be searched.
-     * @return a collection of the values found...
-     */
-    private Collection<?> getCollectionOfValues(String[] fields, Collection<Map<?, ?>> values) {
-        return values.stream().filter(map -> map != null && map.containsKey(fields[0]))
-                .map(m -> getValue(fields, m)).collect(Collectors.toList());
     }
 
     public FieldPredicate where(String field) {

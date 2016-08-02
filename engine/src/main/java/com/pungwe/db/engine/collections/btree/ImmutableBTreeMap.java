@@ -165,6 +165,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 return null;
             }
 
+            // Get the object value...
             Object value = pair.getValue();
 
             // Create lazy loading immutable entry...
@@ -173,6 +174,12 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             // There was an issue reading...
             throw new RuntimeException(ex);
         }
+    }
+
+    @Override
+    public Set<BTreeEntry<K, V>> getEntries(Collection<K> keys) {
+        // Find all the leaves...
+        return null;
     }
 
     @SuppressWarnings("unchecked")

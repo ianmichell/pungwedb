@@ -162,7 +162,7 @@ public final class UUIDGen {
         long newLastNanos;
         while (true) {
             //Generate a candidate value for new lastNanos
-            newLastNanos = ((System.currentTimeMillis() - START_EPOCH) * 1000000l);
+            newLastNanos = ((System.currentTimeMillis() - START_EPOCH) * 1000000L);
             long originalLastNanos = lastNanos.get();
             if (newLastNanos > originalLastNanos) {
                 //Slow path once per millisecond do a CAS

@@ -14,6 +14,7 @@
 package com.pungwe.db.engine.collections.btree;
 
 import com.google.common.hash.BloomFilter;
+import com.pungwe.db.engine.collections.types.LSMTreeIndex;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -347,6 +348,13 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     protected abstract Node<K,?> rootNode();
     protected abstract BloomFilter<K> bloomFilter();
 
+    @SuppressWarnings("unchecked")
+    public Set<BTreeEntry<K, V>> getEntries(K... keys) {
+        return getEntries(Arrays.asList(keys));
+    }
+
+    public abstract Set<BTreeEntry<K, V>> getEntries(Collection<K> keys);
+
     public static class BTreeEntry<K,V> implements Entry<K,V> {
 
         private K key;
@@ -464,6 +472,11 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
                 return null;
             }
             return parent.getEntry(key);
+        }
+
+        @Override
+        public Set<BTreeEntry<K, V>> getEntries(Collection<K> keys) {
+            return parent.getEntries(keys);
         }
 
         @Override
