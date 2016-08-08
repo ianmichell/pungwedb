@@ -11,11 +11,9 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.pungwe.db.engine.collections.btree;
+package com.pungwe.db.common.collections.btree;
 
 import com.google.common.hash.BloomFilter;
-import com.google.common.hash.Funnel;
-import com.google.common.hash.PrimitiveSink;
 import com.pungwe.db.core.error.DatabaseRuntimeException;
 import com.pungwe.db.core.io.serializers.Serializer;
 
@@ -159,9 +157,19 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         lock.readLock().lock();
         try {
             BTreeLeaf<K, V> leaf = findLeafForGet(key);
-            Pair<V> value = leaf == null ? null : leaf.get(key);
-            return value == null || value.isDeleted() ? null : new BTreeEntry<>(key, value.getValue(),
-                    value.isDeleted());
+            if (leaf == null) {
+                return null;
+            }
+            int pos = leaf.findPosition(key);
+            if (pos < 0) {
+                return null;
+            }
+            K k = leaf.getKeys().get(pos);
+            Pair<V> pair = leaf.getValues().get(pos);
+            if (pair == null || pair.isDeleted()) {
+                return null;
+            }
+            return new BTreeEntry<>(k, pair.getValue(), pair.isDeleted());
         } finally {
             lock.readLock().unlock();
         }
@@ -191,7 +199,7 @@ public class BTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     }
 
     @Override
-    protected long sizeLong() {
+    public long sizeLong() {
         return size.get();
     }
 

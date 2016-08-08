@@ -1,4 +1,4 @@
-package com.pungwe.db.engine.io;
+package com.pungwe.db.common.io;
 
 import java.io.Closeable;
 import java.io.IOException;

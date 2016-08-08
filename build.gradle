@@ -89,6 +89,11 @@ subprojects {
 
             dependency 'org.yaml:snakeyaml:1.9'
 
+            dependency 'javax.cache:cache-api:1.0.0'
+
+            // JNA
+            dependency 'net.java.dev.jna:jna:4.2.2'
+
             // Templating
             dependency "com.lyncode:jtwig-spring:3.1.1"
 

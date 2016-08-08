@@ -16,11 +16,10 @@ package com.pungwe.db.engine.collections.btree;
 import com.pungwe.db.core.io.serializers.NumberSerializer;
 import com.pungwe.db.core.io.serializers.UUIDSerializer;
 import com.pungwe.db.core.utils.UUIDGen;
-import com.pungwe.db.engine.collections.btree.AbstractBTreeMap;
-import com.pungwe.db.engine.collections.btree.BTreeMap;
-import com.pungwe.db.engine.collections.btree.ImmutableBTreeMap;
+import com.pungwe.db.common.collections.btree.AbstractBTreeMap;
+import com.pungwe.db.common.collections.btree.BTreeMap;
 import com.pungwe.db.engine.io.BasicRecordFile;
-import com.pungwe.db.engine.io.RecordFile;
+import com.pungwe.db.common.io.RecordFile;
 import org.junit.Test;
 
 import java.io.File;
@@ -31,7 +30,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 

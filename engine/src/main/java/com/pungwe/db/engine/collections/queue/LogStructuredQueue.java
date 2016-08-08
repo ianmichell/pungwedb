@@ -21,7 +21,7 @@ import com.pungwe.db.core.utils.TypeReference;
 import com.pungwe.db.core.utils.UUIDGen;
 import com.pungwe.db.engine.io.BasicRecordFile;
 import com.pungwe.db.engine.io.CommitLog;
-import com.pungwe.db.engine.io.RecordFile;
+import com.pungwe.db.common.io.RecordFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

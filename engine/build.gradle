@@ -2,6 +2,7 @@ dependencies {
 
     // Project core
     compile project(':core')
+    compile project(':common')
 
     // Outer dependencies
     compile 'org.slf4j:slf4j-log4j12'

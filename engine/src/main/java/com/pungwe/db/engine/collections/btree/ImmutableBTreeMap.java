@@ -13,19 +13,15 @@
  */
 package com.pungwe.db.engine.collections.btree;
 
-import com.esotericsoftware.kryo.io.Input;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.hash.BloomFilter;
+import com.pungwe.db.common.collections.btree.AbstractBTreeMap;
 import com.pungwe.db.core.error.DatabaseRuntimeException;
 import com.pungwe.db.core.io.serializers.Serializer;
-import com.pungwe.db.engine.io.RecordFile;
-import com.sun.scenario.effect.Bloom;
+import com.pungwe.db.common.io.RecordFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -82,7 +78,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                                                        RecordFile<V> valueFile, File bloomFilterFile, String treeName,
                                                        AbstractBTreeMap<K, V> treeToWrite) throws IOException {
         BTreeWriter<K, V> writer = new BTreeWriter<>(bloomSerializer, keyFile, valueFile, bloomFilterFile);
-        return writer.write(treeName, treeToWrite, treeToWrite.maxKeysPerNode);
+        return writer.write(treeName, treeToWrite, treeToWrite.maxKeysPerNode());
     }
 
     public static <K, V> ImmutableBTreeMap<K, V> merge(Serializer<K> keySerializer, RecordFile<Node<K, ?>> keyFile,
@@ -104,7 +100,10 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         Map<String, Object> metaData = keyFile.getMetaData();
         Object size = metaData.getOrDefault("size", 0);
         Object rootPointer = metaData.get("root");
-        long root = Number.class.isAssignableFrom(rootPointer.getClass()) ? ((Number) rootPointer).longValue() :
+        if (rootPointer == null) {
+            throw new IOException("Could not find the root pointer in file meta data");
+        }
+        Long root = Number.class.isAssignableFrom(rootPointer.getClass()) ? ((Number) rootPointer).longValue() :
                 new Long(rootPointer.toString());
         this.size = Number.class.isAssignableFrom(size.getClass()) ? ((Number) size).longValue() :
                 new Long(size.toString());
@@ -160,7 +159,12 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
         }
         try {
             ImmutableLeaf<K> leaf = findLeafForKey(key);
-            Pair<Object> pair = leaf.get(key);
+            int pos = leaf.findPosition(key);
+            if (pos < 0) {
+                return null;
+            }
+            K k = leaf.getKeys().get(pos);
+            Pair<Object> pair = leaf.getValues().get(pos);
             if (pair == null || pair.isDeleted()) {
                 return null;
             }
@@ -169,7 +173,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             Object value = pair.getValue();
 
             // Create lazy loading immutable entry...
-            return (BTreeEntry<K, V>) new ImmutableBTreeEntry<>(valueFile, key, value, pair.isDeleted());
+            return (BTreeEntry<K, V>) new ImmutableBTreeEntry<>(valueFile, k, value, pair.isDeleted());
         } catch (IOException ex) {
             // There was an issue reading...
             throw new RuntimeException(ex);
@@ -205,7 +209,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
     }
 
     @Override
-    protected long sizeLong() {
+    public long sizeLong() {
         return size;
     }
 
@@ -370,6 +374,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             return new ImmutableBTreeMap<>(comparator, bloomSerializer, keyFile, valueFile, bloomFilterFile, root);
         }
 
+        @SuppressWarnings("unchecked")
         public ImmutableBTreeMap<K, V> write(String name, AbstractBTreeMap<K, V> tree, int maxNodeSide)
                 throws IOException {
             RecordFile.Writer<Node<K, ?>> keyWriter = keyFile.writer();
@@ -384,14 +389,14 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             Iterator<Entry<K ,V>> it = tree.iterator();
             while (it.hasNext()) {
                 // Build a leaf up to max node size.
-                Node<K, ?> leaf = buildLeaf(bloomFilter, counter, tree.comparator, parents.peek().keys,
+                Node<K, ?> leaf = buildLeaf(bloomFilter, counter, (Comparator<K>)tree.comparator(), parents.peek().keys,
                         parents.peek().children, it, maxNodeSide);
 
                 // If there are no keys then! We have a root leaf...
                 if (!it.hasNext() && parents.peek().keys.size() < 1) {
                     System.out.println("Finished writing, flushing tree");
-                    return commitTree(name, parents.pop().children.get(0), leaf, bloomFilter, tree.comparator,
-                            keyFile, counter.get());
+                    return commitTree(name, parents.pop().children.get(0), leaf, bloomFilter, (Comparator<K>)tree
+                                    .comparator(), keyFile, counter.get());
                 }
 
                 if (it.hasNext() && parents.peek().keys.size() < maxNodeSide) {
@@ -400,7 +405,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
 
                 // If there are keys then we need to create a new branch...
                 BranchPair<K> parent = parents.pop();
-                final ImmutableBranch<K> branch = new ImmutableBranch<>(tree.comparator, parent.keys,
+                final ImmutableBranch<K> branch = new ImmutableBranch<>((Comparator<K>)tree.comparator(), parent.keys,
                         parent.children);
 
                 // Add a new pair if there are no parents...
@@ -425,7 +430,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
 
                 // If we get here then we have already hit the keys per branch limit and need to split
-                buildBranches(keyWriter, parents, maxNodeSide, tree.comparator);
+                buildBranches(keyWriter, parents, maxNodeSide, (Comparator<K>)tree.comparator());
 
                 // At the end of everything we need to push a new BranchPair in, to start the next branch (if any).
                 parents.push(new BranchPair<>());
@@ -436,17 +441,19 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 BranchPair<K> pair = parents.pop();
                 // If the pair has no keys, this is a root node
                 if (pair.keys.isEmpty()) {
-                   return commitTree(name, pair.children.get(0), null, bloomFilter, tree.comparator, keyFile,
-                           counter.get());
+                   return commitTree(name, pair.children.get(0), null, bloomFilter, (Comparator<K>)tree.comparator(),
+                           keyFile, counter.get());
                 }
 
                 // Create a new branch
-                ImmutableBranch<K> branch = new ImmutableBranch<>(tree.comparator, pair.keys, pair.children);
+                ImmutableBranch<K> branch = new ImmutableBranch<>((Comparator<K>)tree.comparator(), pair.keys,
+                        pair.children);
                 // Write the branch
                 long position = keyFile.writer().append(branch);
                 // If the key size of the branch call less than maxKeysPerNode, we're done
                 if (branch.getKeys().size() < maxNodeSide || parents.size() == 0) {
-                    return commitTree(name, position, branch, bloomFilter, tree.comparator, keyFile, counter.get());
+                    return commitTree(name, position, branch, bloomFilter, (Comparator<K>)tree.comparator(), keyFile,
+                            counter.get());
                 }
                 if (parents.peek().children.size() > 0) {
                     parents.peek().keys.add(branch.getKeys().get(0));
@@ -522,7 +529,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             while (hasNext) {
 
                 // Create a leaf to add to the branch... Doesn't return anything as it populates keys and children
-                buildMergedLeaf(bloomFilter, treeSize, left.comparator, parents.peek().keys,
+                buildMergedLeaf(bloomFilter, treeSize, (Comparator<K>) left.comparator(), parents.peek().keys,
                         parents.peek().children, leftRight, leftIT, rightIT, maxNodeSize, gc);
 
                 // Has next will check if we have any entries left to process.
@@ -531,8 +538,8 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 // If there are no keys then! We have a root leaf...
                 if (!hasNext && parents.peek().keys.size() < 1) {
 
-                    return commitTree(name, parents.peek().children.get(0), null, bloomFilter, left.comparator, keyFile,
-                            treeSize.get());
+                    return commitTree(name, parents.peek().children.get(0), null, bloomFilter, (Comparator<K>)left
+                                    .comparator(), keyFile, treeSize.get());
                 }
 
                 if (hasNext && parents.peek().keys.size() < maxNodeSize) {
@@ -540,8 +547,8 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
 
                 // If there are keys then we need to create a new branch...
-                final ImmutableBranch<K> branch = new ImmutableBranch<>(left.comparator, parents.peek().keys,
-                        parents.peek().children);
+                final ImmutableBranch<K> branch = new ImmutableBranch<>((Comparator<K>) left.comparator(), parents
+                        .peek().keys, parents.peek().children);
 
                 // Pop this branch out, so when we can write to it's parent.
                 parents.pop();
@@ -568,7 +575,7 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 }
 
                 // If we get here then we have already hit the keys per branch limit and need to split
-                buildBranches(keyFile.writer(), parents, maxNodeSize, left.comparator);
+                buildBranches(keyFile.writer(), parents, maxNodeSize, (Comparator<K>) left.comparator());
 
                 // At the end of everything we need to push a new BranchPair in, to start the next branch (if any).
                 parents.push(new BranchPair<>());
@@ -579,17 +586,19 @@ public class ImmutableBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
                 BranchPair<K> pair = parents.pop();
                 // If the pair has no keys, this call a root node
                 if (pair.keys.isEmpty()) {
-                    return commitTree(name, pair.children.get(0), null, bloomFilter, left.comparator, keyFile,
-                            treeSize.get());
+                    return commitTree(name, pair.children.get(0), null, bloomFilter, (Comparator<K>) left.comparator(),
+                            keyFile, treeSize.get());
                 }
 
                 // Create a new branch
-                ImmutableBranch<K> branch = new ImmutableBranch<>(left.comparator, pair.keys, pair.children);
+                ImmutableBranch<K> branch = new ImmutableBranch<>((Comparator<K>) left.comparator(), pair.keys,
+                        pair.children);
                 // Write the branch
                 long position = keyFile.writer().append(branch);
                 // If the key size of the branch call less than maxKeysPerNode, we're done
                 if (branch.getKeys().size() < maxNodeSize || parents.size() == 0) {
-                    return commitTree(name, position, null, bloomFilter, left.comparator, keyFile, treeSize.get());
+                    return commitTree(name, position, null, bloomFilter, (Comparator<K>) left.comparator(), keyFile,
+                            treeSize.get());
                 }
                 if (parents.peek().children.size() > 0) {
                     parents.peek().keys.add(branch.getKeys().get(0));

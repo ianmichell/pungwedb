@@ -19,12 +19,12 @@ import com.pungwe.db.core.error.DatabaseRuntimeException;
 import com.pungwe.db.core.io.serializers.*;
 import com.pungwe.db.core.utils.TypeReference;
 import com.pungwe.db.core.utils.UUIDGen;
-import com.pungwe.db.engine.collections.btree.AbstractBTreeMap;
-import com.pungwe.db.engine.collections.btree.BTreeMap;
+import com.pungwe.db.common.collections.btree.AbstractBTreeMap;
+import com.pungwe.db.common.collections.btree.BTreeMap;
 import com.pungwe.db.engine.collections.btree.ImmutableBTreeMap;
 import com.pungwe.db.engine.io.BasicRecordFile;
 import com.pungwe.db.engine.io.CommitLog;
-import com.pungwe.db.engine.io.RecordFile;
+import com.pungwe.db.common.io.RecordFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

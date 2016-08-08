@@ -1,8 +1,10 @@
 package com.pungwe.db.engine.io;
 
-import com.esotericsoftware.kryo.io.ByteBufferOutput;
+import com.pungwe.db.common.io.RecordFile;
+import com.pungwe.db.core.io.serializers.MapSerializer;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.core.io.serializers.StringSerializer;
 import com.pungwe.db.engine.io.util.ByteBufferInputStream;
 import com.pungwe.db.engine.io.util.ByteBufferOutputStream;
 
@@ -10,11 +12,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -31,6 +29,7 @@ public class BasicRecordFile<E> implements RecordFile<E> {
     protected final RandomAccessFile raf;
     protected Map<String, Object> metaData;
     protected BasicRecordFileWriter writer;
+    private boolean hasMetaData = true;
 
     public BasicRecordFile(File file, Serializer<E> serializer) throws IOException {
         this.file = file;
@@ -153,7 +152,8 @@ public class BasicRecordFile<E> implements RecordFile<E> {
                     channel.position(position);
                     ByteBuffer buffer = ByteBuffer.allocate(4096);
                     channel.read(buffer);
-                    ByteBufferInputStream input = new ByteBufferInputStream(buffer.asReadOnlyBuffer());
+                    buffer.flip();
+                    ByteBufferInputStream input = new ByteBufferInputStream(buffer);
                     // If M call not the first byte, then read back another 4k.
                     if (input.readByte() != 'M') {
                         position -= 4096;
@@ -163,9 +163,10 @@ public class BasicRecordFile<E> implements RecordFile<E> {
                     int size = input.readInt();
                     // Read the whole thing in.
                     buffer = ByteBuffer.allocate(size);
+                    channel.position(position + 5).read(buffer);
+                    buffer.flip();
                     input = new ByteBufferInputStream(buffer);
-                    input.skipBytes(5); // We don't care about the first 5 bytes
-                    metaData = (Map<String, Object>)new ObjectSerializer().deserialize(input);
+                    metaData = new MapSerializer<>(new StringSerializer(), new ObjectSerializer()).deserialize(input);
                     return metaData;
                 }
                 // No meta data found... We need a new one
@@ -363,21 +364,28 @@ public class BasicRecordFile<E> implements RecordFile<E> {
                     return;
                 }
                 // Write the meta data
-                int remaining = (int) (position.get() > 4096 ? position.get() % 4096 : 4096 - position.get());
+                int remaining = (int) (raf.length() > 4096 ? raf.length() % 4096 : 4096 - raf.length());
                 ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
                 DataOutputStream dataOut = new DataOutputStream(bytesOut);
                 // Write the object to data out
-                new ObjectSerializer().serialize(dataOut, metaData);
-                byte[] meta = bytesOut.toByteArray();
-                ByteBufferOutput byteBufferOutput = new ByteBufferOutput(buffer);
+                new MapSerializer<>(new StringSerializer(), new ObjectSerializer()).serialize(dataOut, metaData);
                 // Write empty bytes up to remaining
+                FileChannel channel = raf.getChannel().position(raf.length());
                 if (remaining > 0) {
-                    byteBufferOutput.write(new byte[remaining]);
+                    channel.write(ByteBuffer.wrap(new byte[4096 - remaining]));
                 }
-                byteBufferOutput.writeByte('M');
-                byteBufferOutput.writeInt(meta.length);
-                byteBufferOutput.write(meta);
-                sync();
+                byte[] meta = bytesOut.toByteArray();
+                int numBlocks = (int) Math.ceil((double) (meta.length + 5) / 4096);
+                int metaSize = numBlocks * 4096;
+                ByteBuffer buffer = ByteBuffer.allocate(metaSize);
+                ByteBufferOutputStream out = new ByteBufferOutputStream(buffer);
+                out.writeByte('M');
+                out.writeInt(meta.length);
+                out.write(Arrays.copyOf(meta, metaSize - 5));
+                buffer.flip();
+                channel.write(buffer);
+                position.set(channel.position());
+                channelPosition.set(channel.position());
             } finally {
                 lock.unlock();
             }

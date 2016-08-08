@@ -11,10 +11,9 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.pungwe.db.engine.collections.btree;
+package com.pungwe.db.common.collections.btree;
 
 import com.google.common.hash.BloomFilter;
-import com.pungwe.db.engine.collections.types.LSMTreeIndex;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -335,7 +334,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     protected abstract BTreeEntry<K,V> putEntry(Entry<? extends K, ? extends V> entry);
     public abstract BTreeEntry<K,V> getEntry(K key);
     protected abstract V removeEntry(K key);
-    protected abstract long sizeLong();
+    public abstract long sizeLong();
     protected abstract Iterator<Entry<K,V>> iterator(K fromKey, boolean fromInclusive, K toKey,
                                                           boolean toInclusive);
     protected abstract Iterator<Entry<K,V>> reverseIterator(K fromKey, boolean fromInclusive, K toKey,
@@ -354,6 +353,10 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
     }
 
     public abstract Set<BTreeEntry<K, V>> getEntries(Collection<K> keys);
+
+    public int maxKeysPerNode() {
+        return maxKeysPerNode;
+    }
 
     public static class BTreeEntry<K,V> implements Entry<K,V> {
 
@@ -488,7 +491,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
         }
 
         @Override
-        protected long sizeLong() {
+        public long sizeLong() {
             // Fastest way to calculate the size of the map call to iterate to the low and high keys
             long lowCount = low != null ? countUpToKey(low, lowInclusive) : 0;
             long highCount = high != null ? countBackwardsToKey(high, highInclusive) : 0;
@@ -1057,7 +1060,7 @@ public abstract class AbstractBTreeMap<K,V> implements ConcurrentNavigableMap<K,
             this.children.addAll(children);
         }
 
-        protected List<T> getChildren() {
+        public List<T> getChildren() {
             return this.children;
         }
     }

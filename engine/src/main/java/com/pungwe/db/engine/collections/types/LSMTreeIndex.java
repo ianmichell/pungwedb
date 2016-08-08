@@ -13,23 +13,30 @@
  */
 package com.pungwe.db.engine.collections.types;
 
+import com.pungwe.db.common.collections.btree.AbstractBTreeMap;
+import com.pungwe.db.common.collections.btree.BTreeMap;
 import com.pungwe.db.core.error.DatabaseRuntimeException;
 import com.pungwe.db.core.io.serializers.ObjectSerializer;
 import com.pungwe.db.core.io.serializers.Serializer;
+import com.pungwe.db.core.types.Bucket;
 import com.pungwe.db.core.types.DBObject;
+import com.pungwe.db.core.utils.ConfigSingleton;
 import com.pungwe.db.core.utils.UUIDGen;
 import com.pungwe.db.core.utils.comparators.GenericComparator;
-import com.pungwe.db.engine.collections.btree.AbstractBTreeMap;
-import com.pungwe.db.engine.collections.btree.BTreeMap;
 import com.pungwe.db.engine.collections.btree.ImmutableBTreeMap;
 import com.pungwe.db.engine.io.BasicRecordFile;
-import com.pungwe.db.engine.io.RecordFile;
+import com.pungwe.db.common.io.RecordFile;
 import com.pungwe.db.engine.io.util.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -43,52 +50,105 @@ import static com.pungwe.db.core.utils.Utils.getValue;
 public class LSMTreeIndex {
 
     private final File directory;
-    private final String name;
-    private final Map<String, Boolean> fields;
+    private final Bucket.IndexConfig config;
     private final Comparator<Object> comparator;
-    private final Serializer<Object> keySerializer = new WrappingObjectSerializer();
+    private final Serializer<Object> bloomSerializer;
     private final Serializer<AbstractBTreeMap.Node<Object, ?>> nodeSerializer;
     private final ConcurrentNavigableMap<UUID, AbstractBTreeMap<Object, Object>> trees = new ConcurrentSkipListMap<>(
             UUID::compareTo);
-    private boolean unique = false;
-    private boolean primary = false;
-    private final int maxMemoryTreeSize;
 
-    public static LSMTreeIndex getInstance(File directory, String name, Map<String, Object> config) throws IOException {
-        return new LSMTreeIndex(directory, name, config);
+    private boolean closed = false;
+
+    public static LSMTreeIndex getInstance(File directory, Bucket.IndexConfig config) throws IOException {
+        return new LSMTreeIndex(directory, config);
+    }
+
+
+    public static LSMTreeIndex build(File directory, Bucket.IndexConfig config, Stream<DBObject> valueStream)
+            throws IOException {
+        // Create a temporary directory. We want to merge after we've built, so that our trees are at their maximum size
+        String tmpPath = (String)ConfigSingleton.getInstance().getByPath("engine.tmp.path");
+        File tmp = null;
+        if (StringUtils.isNotBlank(tmpPath)) {
+            tmp = Files.createTempDirectory(Paths.get(tmpPath), config.getName()).toFile();
+        } else {
+            tmp = Files.createTempDirectory(config.getName()).toFile();
+        }
+        /*
+         * Create the index within the temporary directory (this is useful for rebuilding, because if it fails, we need
+         * only delete the folder it was in!
+         */
+        LSMTreeIndex tmpIndex = LSMTreeIndex.getInstance(tmp, config);
+        /*
+         * This could take a long time depending on how many records are contained in the stream... On a partitioned
+         * system, we would only be indexing the data contained on this node..
+         */
+        valueStream.forEach(tmpIndex::put);
+        // Once the values have been indexed, we need to perform a merge...
+        tmpIndex.merge();
+        // Close the index
+        tmpIndex.close();
+        /*
+         * Move the files to the parent directory and return a new copy of the index... We should only have the relevant
+         * in this directory...
+         */
+        File[] indexFiles = tmp.listFiles();
+        if (indexFiles == null || indexFiles.length < 1) {
+            throw new IOException("Could not build new index...");
+        }
+        for (File f : indexFiles) {
+            Files.move(Paths.get(f.toURI()), Paths.get(new File(directory, f.getName()).toURI()),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        }
+        // Return an instance of the LSMTreeIndex....
+        return LSMTreeIndex.getInstance(directory, config);
+    }
+
+    /**
+     * Creates and builds a new index, that replaces an old index...
+     *
+     * @param oldIndex the index being rebuilt
+     * @param valueStream the values being indexed
+     * @return a new index to replace the old index
+     *
+     * @throws IOException if there is a problem creating the new index or destroying the old...
+     */
+    public static LSMTreeIndex rebuild(LSMTreeIndex oldIndex, Stream<DBObject> valueStream) throws IOException {
+        // Creates a new index to replace oldIndex...
+        LSMTreeIndex newIndex = build(oldIndex.directory, oldIndex.config, valueStream);
+        // If the new index was created successfully... Delete the old one...
+        oldIndex.drop();
+        // Return the newer index...
+        return newIndex;
     }
 
     @SuppressWarnings("unchecked")
-    private LSMTreeIndex(File directory, String name, Map<String, Object> config) throws IOException {
-        this.name = name;
+    private LSMTreeIndex(File directory, Bucket.IndexConfig config) throws IOException {
         this.directory = directory;
-        if (!config.containsKey("fields") && !Map.class.isAssignableFrom(config.get("fields").getClass())) {
-            throw new IllegalArgumentException("Index config should be key value pairs - String key, Number value");
-        }
-        //
-        this.fields = ((Map<String, Boolean>)config.get("fields"));
-        // Configure primary or unique
-        primary = (Boolean)config.getOrDefault("primary", false);
-        unique = primary ? true : (Boolean)config.getOrDefault("unique", false);
-        // Max items in memory
-        maxMemoryTreeSize = (Integer)config.getOrDefault("treeSize", 10000);
         // Construct the comparator
         this.comparator = buildComparator();
+        this.bloomSerializer = new WrappingObjectSerializer(!config.isUnique());
+        Serializer<Object> keySerializer = new WrappingObjectSerializer();
         // Construct the nodeSerializer
         this.nodeSerializer = ImmutableBTreeMap.serializer(comparator, keySerializer,
                 new ObjectSerializer());
-        configure(config);
+        this.config = config;
+        configure();
     }
 
     public LSMEntry get(DBObject key) {
+
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
         LSMEntry value = null;
 
         // Contains the hashcode of the value and the
         Map<Long, List<AbstractBTreeMap.BTreeEntry<Object, Object>>> found = new LinkedHashMap<>();
-        // Start at the top and work your way down..
-        outer: for (Map.Entry<UUID, AbstractBTreeMap<Object, Object>> tree : trees.descendingMap().entrySet()) {
+        // Work up from the bottom...
+        outer: for (Map.Entry<UUID, AbstractBTreeMap<Object, Object>> tree : trees.entrySet()) {
             // Build a collection of results by row key... they should naturally group by row key... Which we can then
-            if (primary) {
+            if (config.isPrimary()) {
                 AbstractBTreeMap.BTreeEntry<Object, Object> entry = tree.getValue().getEntry(key.getId());
                 if (entry == null) {
                     continue;
@@ -96,37 +156,39 @@ public class LSMTreeIndex {
                 if (entry.isDeleted()) {
                     return null;
                 }
-                return new LSMEntry(entry.getKey(), entry.getValue());
+                return newerInstance(tree.getKey(), entry);
             }
             // If it's not a primary index, it's a bit more complicated... Fields must contain all the fields in the key
-            if (!fields.keySet().containsAll(key.keySet())) {
+            if (!config.hasFields(key.keySet())) {
                 return null;
             }
             // If there is a key there's a way
             for (Map.Entry<String, Object> keyEntry : key.entrySet()) {
                 // If the value is a unique value, we can simply match on a single field
-                if (unique && fields.size() == 1) {
+                if (config.isUnique() && config.getFields().size() == 1) {
                     AbstractBTreeMap.BTreeEntry<Object, Object> entry = tree.getValue().getEntry(keyEntry.getValue());
                     if (entry == null) {
                         continue outer;
                     }
-                    // If the entry is not null, then
-                    return new LSMEntry(entry.getKey(), entry.getValue());
+                    return newerInstance(tree.getKey(), entry);
                 }
                 /*
                  * If it's not unique, then we are going to have to collect the values by key... The comparator will
                  * handle the null sort key...
                  */
-                AbstractBTreeMap.BTreeEntry<Object, Object> entry = tree.getValue().getEntry(new MultiFieldKey(
-                        keyEntry.getKey(), keyEntry.getValue(), null, null));
+//                AbstractBTreeMap.BTreeEntry<Object, Object> entry = tree.getValue().getEntry(new MultiFieldKey(
+//                        keyEntry.getKey(), keyEntry.getValue(), null, null));
+                AbstractBTreeMap.BTreeEntry<Object, Object> entry = (AbstractBTreeMap.BTreeEntry<Object, Object>)tree
+                        .getValue().tailMap(new MultiFieldKey(keyEntry.getKey(), keyEntry.getValue(), null, null))
+                        .firstEntry();
                 if (entry == null) {
                     continue outer;
                 }
 
-                if (unique && entry.isDeleted()) {
+                if (config.isUnique() && entry.isDeleted()) {
                     return null;
-                } else if (unique) {
-                    return new LSMEntry(entry.getKey(), entry.getValue());
+                } else if (config.isUnique()) {
+                    return newerInstance(tree.getKey(), entry);
                 }
 
                 // Add it to the found map
@@ -134,12 +196,17 @@ public class LSMTreeIndex {
                 if (!found.containsKey(hash)) {
                     found.put(hash, new ArrayList<>());
                 }
-                found.get(hash).add(entry);
+                List<AbstractBTreeMap.BTreeEntry<Object, Object>> foundKeys = found.get(hash);
+                foundKeys.add(newerEntry(tree.getKey(), entry));
+                if (foundKeys.size() == key.size()) {
+                    break outer;
+                }
             }
         }
         if (found.isEmpty()) {
             return null;
         }
+        // Errrrrrrrr.....
         Optional<Map.Entry<Long, List<AbstractBTreeMap.BTreeEntry<Object, Object>>>> e = found.entrySet().stream()
                 .filter(o -> o.getValue().size() == key.size()).findFirst();
         if (!e.isPresent()) {
@@ -153,11 +220,56 @@ public class LSMTreeIndex {
         return new LSMEntry(e.get().getValue().get(0).getKey(), e.get().getValue().get(0).getValue());
     }
 
+    private LSMEntry newerInstance(UUID treeKey, AbstractBTreeMap.BTreeEntry<Object, Object> entry) {
+        // If it's null return null...
+        if (entry == null) {
+            return null;
+        }
+        // Check for a newer item, if there is, then return that!
+        LSMEntry newerEntry = new LSMEntry(entry.getKey(), entry.getValue());
+        // Check that we're not on the last tree! If we are, then return the current entry as there is no newer!
+        if (trees.lastKey().equals(treeKey)) {
+            return newerEntry;
+        }
+
+        // Get the newer entry (if any)... A false positive gets a search...
+        AbstractBTreeMap.BTreeEntry<Object, Object> newer = newerEntry(treeKey, entry);
+        // If newer is not null and deleted, then it's deleted damnit! Return null...
+        if (newer != null && newer.isDeleted()) {
+            return null;
+        } else if (newer != null) {
+            // If it's not deleted we return the newer key!
+            return new LSMEntry(newer.getKey(), newer.getValue());
+        }
+        // Otherwise we return what we have... :(
+        return newerEntry;
+    }
+
+    private AbstractBTreeMap.BTreeEntry<Object, Object> newerEntry(UUID treeKey, AbstractBTreeMap.
+            BTreeEntry<Object, Object> entry) {
+        // Current used to store the last most recent entry...
+        AbstractBTreeMap.BTreeEntry<Object, Object> current = entry;
+        /*
+         * Get a head map of the trees in reverse order, so we're looking at the latest btree and working backwards to
+         * the id of the current tree (which we exclude).
+         */
+        for (Map.Entry<UUID, AbstractBTreeMap<Object, Object>> tree : trees.descendingMap().headMap(treeKey, false)
+                .entrySet()) {
+            // Get the newer entry (if any)... A false positive gets a search...
+            AbstractBTreeMap.BTreeEntry<Object, Object> newer = tree.getValue().getEntry(entry.getKey());
+            //
+            if (newer != null) {
+                current = newer;
+            }
+        }
+        return current;
+    }
+
     private long getHashCode(Object key) {
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             DataOutputStream out = new DataOutputStream(bytes);
-            keySerializer.serialize(out, key);
+            new ObjectSerializer().serialize(out, key);
             return createHash(bytes.toByteArray());
         } catch (Exception ex) {
             throw new DatabaseRuntimeException("Could not create a hash of a key: " + key);
@@ -166,15 +278,18 @@ public class LSMTreeIndex {
     }
 
     private boolean getSort(String key) {
-        for (Map.Entry<String, Boolean> e : fields.entrySet()) {
+        for (Bucket.IndexField field : config.getFields()) {
             // the key passed into the method should at least start with
-            if (key.startsWith(e.getKey())) {
-                return e.getValue();
+            if (key.startsWith(field.getName())) {
+                return field.isDescending();
             }
         }
         return false;
     }
 
+    public boolean put(DBObject value) {
+        return put(value, -1);
+    }
     /**
      * If the index is a primary index, then offset must be greater than 0. If it's not it can be anything...
      *
@@ -182,6 +297,9 @@ public class LSMTreeIndex {
      * @param offset the offset (if a primary index) of the value
      */
     public boolean put(DBObject value, long offset) {
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
         // Primary indexes are never non-unique...
         if (!value.isValidId()) {
             throw new IllegalArgumentException("ID is not a valid key");
@@ -198,7 +316,7 @@ public class LSMTreeIndex {
          * the whole key with part of the array if any).
          */
         // Is this a primary index?
-        if (primary) {
+        if (config.isPrimary()) {
             // If the index is a primary index, then we cannot accept arrays on the _id key...
             if (Collection.class.isAssignableFrom(value.getId().getClass())) {
                 // FIXME: Add better errors...
@@ -209,13 +327,13 @@ public class LSMTreeIndex {
         }
         // Collect all the field values for the index...
         Map<String, Object> values = new LinkedHashMap<>();
-        for (String field : fields.keySet()) {
-            Optional<?> keyValue = getValue(field, value);
+        for (Bucket.IndexField field : config.getFields()) {
+            Optional<?> keyValue = getValue(field.getName(), value);
             // Insert the value into values or null...
-            values.put(field, keyValue.orElse(null));
+            values.put(field.getName(), keyValue.orElse(null));
         }
         // It's not a primary index, but it's a single field key...
-        if (fields.size() == 1) {
+        if (config.getFields().size() == 1) {
             // We only need one iteration here, so no need for a loop...
             Map.Entry<String, Object> e = values.entrySet().iterator().next();
             // Insert a single field value...
@@ -225,14 +343,14 @@ public class LSMTreeIndex {
         UUID sort = UUIDGen.getTimeUUID();
         // Collection of compound keys
         List<MultiFieldKey> compoundKeys = new ArrayList<>(values.size());
-        Long idHash = unique ? null : getHashCode(value.getId());
+        Long idHash = config.isUnique() ? null : getHashCode(value.getId());
         for (Map.Entry<String, Object> e : values.entrySet()) {
             // Create a list of compound keys for insertion...
             compoundKeys.addAll(createCompoundKey(tree, e.getKey(), e.getValue(), idHash, sort));
         }
         // Cycle through each element and check if the key already exists... If so throw an exception...
         for (MultiFieldKey key : compoundKeys) {
-            if (primary && hasKey(key)) {
+            if (config.isPrimary() && hasKey(key)) {
                 throw new IllegalArgumentException("Duplicate entry detected");
             }
         }
@@ -254,7 +372,7 @@ public class LSMTreeIndex {
                                                   Long idHash, UUID sort) {
         List<MultiFieldKey> compoundKeys = new ArrayList<>();
         if (value == null) {
-            compoundKeys.add(new MultiFieldKey(field, null, idHash, unique ? null : sort));
+            compoundKeys.add(new MultiFieldKey(field, null, idHash, config.isUnique() ? null : sort));
             return compoundKeys;
         }
         // Is it a collection?
@@ -263,15 +381,15 @@ public class LSMTreeIndex {
             Set<Object> elements = ((Collection<Object>)value).stream().collect(Collectors.toSet());
             if (elements.size() == 0) {
                 // If the set is empty, then rerun with this as a single null value...
-                compoundKeys.add(new MultiFieldKey(field, null, idHash, unique  ? null : sort));
+                compoundKeys.add(new MultiFieldKey(field, null, idHash, config.isUnique()  ? null : sort));
                 return compoundKeys;
             }
             // Otherwise we can loop through all the elements and insert each one...
-            compoundKeys.addAll(elements.stream().map(e -> new MultiFieldKey(field, e, idHash, unique ? null : sort))
-                    .collect(Collectors.toList()));
+            compoundKeys.addAll(elements.stream().map(e -> new MultiFieldKey(field, e, idHash,
+                    config.isUnique() ? null : sort)).collect(Collectors.toList()));
             return compoundKeys;
         }
-        compoundKeys.add(new MultiFieldKey(field, value, idHash, unique ? null : sort));
+        compoundKeys.add(new MultiFieldKey(field, value, idHash, config.isUnique() ? null : sort));
         return compoundKeys;
     }
 
@@ -290,9 +408,9 @@ public class LSMTreeIndex {
         UUID sort = UUIDGen.getTimeUUID();
         if (value == null) {
             // If it has the key
-            if (unique && hasKey(null)) {
+            if (config.isUnique() && hasKey(null)) {
                 throw new IllegalArgumentException("duplicate key detected!");
-            } else if (unique) {
+            } else if (config.isUnique()) {
                 return putValue(null, id) != null;
             }
             // Otherwise insert a db object with a compound like key...
@@ -308,9 +426,9 @@ public class LSMTreeIndex {
             }
             // Otherwise we can loop through all the elements and insert each one...
             for (Object e : elements) {
-                if (unique && hasKey(e)) {
+                if (config.isUnique() && hasKey(e)) {
                     throw new IllegalArgumentException("duplicate key detected");
-                } else if (unique) {
+                } else if (config.isUnique()) {
                     if (putValue(e, id) == null) {
                         throw new DatabaseRuntimeException("Could not insert array value into index");
                     }
@@ -324,7 +442,7 @@ public class LSMTreeIndex {
             return true;
         }
         // Finally if we have an object, we can simply insert the appropriate key.
-        if (unique) {
+        if (config.isUnique()) {
             if (hasKey(value)) {
                 throw new IllegalArgumentException("Duplicate key detected");
             }
@@ -344,38 +462,71 @@ public class LSMTreeIndex {
 
     private void checkAndWriteTree() {
         // If the tree is of maxTreeSize then, write it to disk
-        if (trees.lastEntry().getValue().size() == maxMemoryTreeSize) {
-            // write the tree...
-            File bloom = new File(directory, name + "_" + trees.lastEntry().getKey().toString() + "_bloom.db");
-            File index = new File(directory, name + "_" + trees.lastEntry().getKey().toString() + "_index.db");
-            // Record file
-            try {
-                RecordFile<AbstractBTreeMap.Node<Object, ?>> indexFile = new BasicRecordFile<>(index, nodeSerializer);
-                ImmutableBTreeMap<Object, Object> tree = ImmutableBTreeMap.write(keySerializer, indexFile, bloom, name,
-                        trees.lastEntry().getValue());
-                trees.put(trees.lastEntry().getKey(), tree);
-                trees.put(UUIDGen.getTimeUUID(), new BTreeMap<>(keySerializer, comparator, 1000));
-            } catch (IOException ex) {
-                throw new DatabaseRuntimeException("Could not write tree to disk");
-            }
+        if (trees.lastEntry().getValue().size() == config.getMemoryTreeSize()) {
+            writeTreeToDisk();
+            // Create a new tree...
+            trees.put(UUIDGen.getTimeUUID(), new BTreeMap<>(bloomSerializer, comparator, 1000));
+        }
+    }
+
+    private void writeTreeToDisk() {
+        // write the tree...
+        File bloom = new File(directory, config.getName() + "_" + trees.lastEntry().getKey().toString()
+                + "_bloom.db");
+        File index = new File(directory, config.getName() + "_" + trees.lastEntry().getKey().toString()
+                + "_index.db");
+        // Record file
+        try {
+            RecordFile<AbstractBTreeMap.Node<Object, ?>> indexFile = new BasicRecordFile<>(index, nodeSerializer);
+            ImmutableBTreeMap<Object, Object> tree = ImmutableBTreeMap.write(bloomSerializer, indexFile, bloom,
+                    config.getName(), trees.lastEntry().getValue());
+            trees.put(trees.lastEntry().getKey(), tree);
+            // force commit
+            indexFile.writer().commit();
+        } catch (IOException ex) {
+            throw new DatabaseRuntimeException("Could not write tree to disk");
         }
     }
 
     /**
-     * Updates the first closes match to the key. If the entire key is passed in then updating will not misfire, if a
-     * partial key is passed in, then it will only update the first element (or all the elements if multi is true).
+     * Updates the entry with the value passed in. The value must contain the fields being updated as well
+     * as the object _id key. The _id key is hashed and used to ensure that the value being updated is correct.
      *
-     * @param originalKey the original key / search key for the record
+     * If multi is set to true, then the hash of the key is ignored and every match will be updated...
+     *
      * @param value the updated record where the index keys will be picked.
      * @param multi multi update, if true updates all instances of key...
      */
-    public void update(DBObject originalKey, DBObject value, boolean multi) {
+    public void update(DBObject value, boolean multi) {
         // Update a document based on it's original key
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
     }
 
     /**
-     * Creates a stream of the entire index. This is used for scanning the index for values and depending on size, can
-     * might not be the fastest method of retrieval. If you have to scan an entire index and then
+     * Merges the btrees that are contained within the LSM Tree... Removes stale data...
+     *
+     * @throws IOException
+     */
+    public void merge() throws IOException {
+        // FIXME: Make me do something...
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
+    }
+
+    public void gc() throws IOException {
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
+    }
+
+    /**
+     * This returns a stream of the entire index. It's non-collating, so any multi key values will be returned
+     * as single value entries... This means that if you have a compound key of {key: false, another: false}, results
+     * will be returned in key order from each tree in the LSMTree ( {key: {key=value}, value: object},
+     * {key: {another=value}, value: object }, etc).
      *
      * @return a stream of entries...
      */
@@ -383,7 +534,22 @@ public class LSMTreeIndex {
         return entrySet().stream();
     }
 
+    /**
+     * Returns a deletion stream for garbage collection. This is used by the bucket to remove stale records...
+     *
+     * @return a stream of deleted entries...
+     */
+    public Stream<LSMEntry> deletions() {
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
+        return null;
+    }
+
     public Set<LSMEntry> entrySet() {
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
         // Streams can be filtered.
         return new AbstractSet<LSMEntry>() {
 
@@ -399,10 +565,10 @@ public class LSMTreeIndex {
         };
     }
 
-    private void configure(Map<String, Object> config) throws IOException {
+    private void configure() throws IOException {
         // Find the files for bloom filter and index
-        Pattern p = FileUtils.uuidFilePattern(name, "index.db", "_");
-        Pattern pb = FileUtils.uuidFilePattern(name, "bloom.db", "_");
+        Pattern p = FileUtils.uuidFilePattern(config.getName(), "index.db", "_");
+        Pattern pb = FileUtils.uuidFilePattern(config.getName(), "bloom.db", "_");
         // Filter the bloom files out of the directory
         File[] bloomFiles = directory.listFiles((dir, name) -> pb.matcher(name).matches());
         // Filter the index files out of the directory
@@ -413,7 +579,11 @@ public class LSMTreeIndex {
         }
         // Load the  index files...
         for (int i = 0; i < files.length; i++) {
-            String fileId = p.matcher(files[i]).group(1);
+            Matcher m = p.matcher(files[i]);
+            if (!m.find()) {
+                throw new IOException("Could not get the file id");
+            }
+            String fileId = m.group(1);
             // Open the index file
             RecordFile<AbstractBTreeMap.Node<Object, ?>> indexFile = new BasicRecordFile<>(new File(directory,
                     files[i]), nodeSerializer);
@@ -421,12 +591,19 @@ public class LSMTreeIndex {
             UUID id = UUID.fromString(fileId);
             // Open the index
             ImmutableBTreeMap<Object, Object> idx = ImmutableBTreeMap.getInstance(comparator,
-                    keySerializer, indexFile, null, bloomFiles[i]);
+                    bloomSerializer, indexFile, null, bloomFiles[i]);
+            // The index was closed (we should also look at a log replay)
+            if (idx.size() < config.getMemoryTreeSize()) {
+                trees.put(id, BTreeMap.from(bloomSerializer, idx, 1000));
+            }
             // Add the index to the tree...
             trees.put(id, idx);
         }
         // Create a writable Btree
-        trees.put(UUIDGen.getTimeUUID(), new BTreeMap<>(keySerializer, comparator, 1000));
+        if (trees.size() > 0 && BTreeMap.class.isAssignableFrom(trees.lastEntry().getValue().getClass())) {
+            return;
+        }
+        trees.put(UUIDGen.getTimeUUID(), new BTreeMap<>(bloomSerializer, comparator, 1000));
     }
 
     private Comparator<Object> buildComparator() {
@@ -445,23 +622,72 @@ public class LSMTreeIndex {
         };
     }
 
+    private void drop() throws IOException {
+        if (closed) {
+            throw new IllegalArgumentException("This index has been closed");
+        }
+        for (UUID key : trees.keySet()) {
+            File indexFile = new File(directory, config.getName() + "_" + key.toString() + "_index.db");
+            File bloomFile = new File(directory, config.getName() + "_" + key.toString() + "_bloom.db");
+            // Delete the index file
+            if (!indexFile.delete()) {
+                throw new IOException("Could not delete index file: " + indexFile.getName());
+            }
+            // Delete the bloom file..
+            if (!bloomFile.delete()) {
+                throw new IOException("Could not delete bloom file: " + bloomFile.getName());
+            }
+        }
+        trees.clear();
+    }
+
+    private void close() {
+        writeTreeToDisk();
+        closed = true;
+    }
+
     public String getName() {
-        return name;
+        return config.getName();
+    }
+
+    public Bucket.IndexConfig getConfig() {
+        return config;
     }
 
     private static class MultiFieldKeyComparator implements Comparator<MultiFieldKey> {
 
         @Override
         public int compare(MultiFieldKey o1, MultiFieldKey o2) {
-            int fieldCmp = o1.getField().compareTo(o2.getField());
-            int cmp = GenericComparator.getInstance().compare(o1.getValue(), o2.getValue());
-            if (fieldCmp == 0 && cmp != 0) {
-                return cmp;
+            // Get the hash comparison...
+            int hashCmp = 0;
+            // These objects are obviously very different...
+            if (o1.getIdHash() != null && o2.getIdHash() != null) {
+                hashCmp = Long.compare(o1.getIdHash(), o2.getIdHash());
+            } else if (o1.getIdHash() == null && o2.getIdHash() != null) {
+                hashCmp = -1;
+            } else if (o2.getIdHash() == null) {
+                hashCmp = 1;
             }
-            // If any of the sort keys are null, then it's the same..
-            if (o2.getSort() == null || o2.getSort() == null) {
+            // If the hashCmp is 0... Then we're dealing with the same object!
+            int fieldCmp = o1.getField().compareTo(o2.getField());
+            // If the field comparison is 0 and the hash comparison is 0, then return 0, not point going further...
+            if (fieldCmp == 0 && hashCmp == 0) {
+                return 0;
+            }
+            // If the field comparison is different... Then return that...
+            if (fieldCmp != 0) {
                 return fieldCmp;
             }
+            // If however, the field comparison is the same, then we can check the value...
+            int valueCmp = GenericComparator.getInstance().compare(o1.getValue(), o2.getValue());
+            // If the value comparison is not 0, then return that as it's clearly different...
+            if (valueCmp != 0) {
+                return valueCmp;
+            }
+            /*
+             * If field comparison is the same and the value comparison is the same and we have a different hash, then
+             * the last step is to check the sort as this should order things in the correct place...
+             */
             return GenericComparator.getInstance().compare(o1.getSort(), o2.getSort());
         }
     }
@@ -484,7 +710,12 @@ public class LSMTreeIndex {
         }
     }
 
-    // Scanning iterator... This will collate split index values...
+    /**
+     * This will iterate through the entire LSMTree index. It's non-collating, so any multi key values will be returned
+     * as single value entries... This means that if you have a compound key of {key: false, another: false}, results
+     * will be returned in key order from each tree in the LSMTree ( {key: {key=value}, value: object},
+     * {key: {another=value}, value: object }, etc).
+     */
     private static class LSMTreeIterator implements Iterator<LSMEntry> {
 
         // Store a reference to the outer class.
@@ -657,8 +888,18 @@ public class LSMTreeIndex {
     }
 
     private static class WrappingObjectSerializer implements Serializer<Object> {
-        private Serializer<MultiFieldKey> multiFieldKeySerializer = new MultiFieldKeySerializer();
-        private Serializer<Object> objectSerializer = new ObjectSerializer();
+        private final Serializer<MultiFieldKey> multiFieldKeySerializer;
+        private final Serializer<Object> objectSerializer;
+
+        public WrappingObjectSerializer(boolean bloom) {
+            // If the bloom is set to true, then it's a non-unique index and life could get a bit trickier.
+            multiFieldKeySerializer = new MultiFieldKeySerializer(bloom);
+            objectSerializer = new ObjectSerializer();
+        }
+
+        public WrappingObjectSerializer() {
+            this(false);
+        }
 
         @Override
         public void serialize(DataOutput out, Object value) throws IOException {
@@ -671,6 +912,7 @@ public class LSMTreeIndex {
                 d.writeByte('O');
                 objectSerializer.serialize(d, value);
             }
+            out.write(bytes.toByteArray());
         }
 
         @Override
@@ -696,6 +938,11 @@ public class LSMTreeIndex {
     private static class MultiFieldKeySerializer implements Serializer<MultiFieldKey> {
 
         private ObjectSerializer objectSerializer = new ObjectSerializer();
+        private final boolean bloom;
+
+        public MultiFieldKeySerializer(boolean bloom) {
+            this.bloom = bloom;
+        }
 
         @Override
         public void serialize(DataOutput out, MultiFieldKey value) throws IOException {
@@ -703,8 +950,10 @@ public class LSMTreeIndex {
             DataOutputStream d = new DataOutputStream(bytes);
             d.writeUTF(value.getField());
             objectSerializer.serialize(d, value.getValue());
-            objectSerializer.serialize(d, value.getIdHash());
-            objectSerializer.serialize(d, value.getSort());
+            if (!bloom) {
+                objectSerializer.serialize(d, value.getIdHash());
+                objectSerializer.serialize(d, value.getSort());
+            }
             out.write(bytes.toByteArray());
         }
 

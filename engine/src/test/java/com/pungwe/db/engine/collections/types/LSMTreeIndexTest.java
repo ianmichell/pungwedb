@@ -14,14 +14,14 @@
 package com.pungwe.db.engine.collections.types;
 
 import com.google.common.io.Files;
+import com.pungwe.db.core.types.Bucket;
 import com.pungwe.db.core.types.DBObject;
 import com.pungwe.db.core.utils.UUIDGen;
 import org.junit.Test;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.util.*;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -35,12 +35,11 @@ public class LSMTreeIndexTest {
     @Test
     public void singleValuePrimary() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("_id", false);
-        config.put("fields", fields);
-        config.put("primary", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", true, true, 10000, Collections.singletonList(
+                new Bucket.IndexField("_id", false)
+        ));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(UUIDGen.getTimeUUID());
         value.put("field", "value");
@@ -52,12 +51,11 @@ public class LSMTreeIndexTest {
     @Test(expected = IllegalArgumentException.class)
     public void singleValuePrimaryArray() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("_id", false);
-        config.put("fields", fields);
-        config.put("primary", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", true, true, 10000, Collections.singletonList(
+                new Bucket.IndexField("_id", false)
+        ));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(Arrays.asList(1, 2, 3, 4));
         value.put("field", "value");
@@ -67,13 +65,10 @@ public class LSMTreeIndexTest {
     @Test
     public void secondarySingleKeyUnique() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("field", false);
-        config.put("fields", fields);
-        config.put("primary", false);
-        config.put("unique", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-secondary", false, true, 10000,
+                Collections.singletonList(new Bucket.IndexField("field", false)));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(UUIDGen.getTimeUUID());
         value.put("field", "value");
@@ -85,13 +80,10 @@ public class LSMTreeIndexTest {
     @Test
     public void secondaryArrayKeyUnique() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("field", false);
-        config.put("fields", fields);
-        config.put("primary", false);
-        config.put("unique", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-secondary", false, true, 10000,
+                Collections.singletonList(new Bucket.IndexField("field", false)));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(UUIDGen.getTimeUUID());
         value.put("field", Arrays.asList(1, 2, 3, 4));
@@ -109,13 +101,10 @@ public class LSMTreeIndexTest {
     @Test(expected = IllegalArgumentException.class)
     public void secondaryArrayKeyUniqueDuplicate() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("field", false);
-        config.put("fields", fields);
-        config.put("primary", false);
-        config.put("unique", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", false, true, 10000,
+                Collections.singletonList(new Bucket.IndexField("field", false)));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(UUIDGen.getTimeUUID());
         value.put("field", Arrays.asList(1, 2, 3, 4));
@@ -129,14 +118,13 @@ public class LSMTreeIndexTest {
     @Test
     public void secondaryMultiKeyUnique() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("key", false);
-        fields.put("another", false);
-        config.put("fields", fields);
-        config.put("primary", false);
-        config.put("unique", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", false, true, 10000,
+                Arrays.asList(
+                        new Bucket.IndexField("key", false),
+                        new Bucket.IndexField("another", false)
+                ));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(UUIDGen.getTimeUUID());
         value.put("key", "value");
@@ -150,16 +138,82 @@ public class LSMTreeIndexTest {
     }
 
     @Test
+    public void secondaryMultiKeyNonUnique() throws Exception {
+        File directory = Files.createTempDir();
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", false, false, 10000,
+                Arrays.asList(
+                        new Bucket.IndexField("key", false),
+                        new Bucket.IndexField("another", false)
+                ));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
+        DBObject value = new DBObject();
+        long start = System.nanoTime();
+        value.setId(UUIDGen.getTimeUUID());
+        value.put("key", "value");
+        value.put("another", "value");
+        assertTrue(index.put(value, 0));
+        for (int i = 0; i < 9999; i++) {
+            value = new DBObject();
+            value.setId(UUIDGen.getTimeUUID());
+            value.put("key", "value");
+            value.put("another", "value");
+            assertTrue(index.put(value, 0));
+        }
+        long end = System.nanoTime();
+        System.out.println(String.format("Took: %f ms to put 10000", (end - start) / 1000000d));
+        DBObject key = new DBObject();
+        key.put("key", "value");
+        key.put("another", "value");
+        start = System.nanoTime();
+        assertNotNull(index.get(key));
+        end = System.nanoTime();
+        System.out.println(String.format("Took: %f ms to fetch 1", (end - start) / 1000000d));
+    }
+
+    @Test
+    public void testBuildIndex() throws Exception {
+        File directory = Files.createTempDir();
+        directory.deleteOnExit();
+        // Build the configuration for the index...
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", false, false, 100000,
+                Arrays.asList(
+                        new Bucket.IndexField("key", false),
+                        new Bucket.IndexField("another", false)
+                ));
+        // Create a new linked list for the values so that we can stream build the index
+        List<DBObject> values = new LinkedList<>();
+        for (int i = 0; i < 1000; i++) {
+            DBObject value = new DBObject();
+            value.setId(UUIDGen.getTimeUUID());
+            value.put("key", "value");
+            value.put("another", "value");
+            values.add(value);
+        }
+        long start = System.nanoTime();
+        LSMTreeIndex index = LSMTreeIndex.build(directory, config, values.stream());
+        long end = System.nanoTime();
+        System.out.println(String.format("Took: %f ms to put 10000", (end - start) / 1000000d));
+        DBObject key = new DBObject();
+        key.put("key", "value");
+        key.put("another", "value");
+        start = System.nanoTime();
+        assertNotNull(index.get(key));
+        assertEquals(values.get(0).getId(), index.get(key).getValue());
+        end = System.nanoTime();
+        System.out.println(String.format("Took: %f ms to fetch 1", (end - start) / 1000000d));
+    }
+
+    @Test
     public void secondaryMultiKeyUniqueSingleFieldQuery() throws Exception {
         File directory = Files.createTempDir();
-        Map<String, Object> config = new LinkedHashMap<>();
-        Map<String, Boolean> fields = new LinkedHashMap<>();
-        fields.put("key", false);
-        fields.put("another", false);
-        config.put("fields", fields);
-        config.put("primary", false);
-        config.put("unique", true);
-        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, "test-primary", config);
+        directory.deleteOnExit();
+        Bucket.IndexConfig config = new Bucket.IndexConfig("test-primary", false, true, 10000,
+                Arrays.asList(
+                        new Bucket.IndexField("key", false),
+                        new Bucket.IndexField("another", false)
+                ));
+        LSMTreeIndex index = LSMTreeIndex.getInstance(directory, config);
         DBObject value = new DBObject();
         value.setId(UUIDGen.getTimeUUID());
         value.put("key", "value");
@@ -169,5 +223,10 @@ public class LSMTreeIndexTest {
         assertEquals(value.getId(), index.get(new DBObject("key", "value")).getValue());
         assertNotNull(index.get(new DBObject("another", "value")));
         assertEquals(value.getId(), index.get(new DBObject("another", "value")).getValue());
+    }
+
+    @Test
+    public void testIterator() throws IOException {
+
     }
 }

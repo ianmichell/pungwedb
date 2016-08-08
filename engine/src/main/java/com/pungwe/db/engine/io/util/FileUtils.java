@@ -21,6 +21,6 @@ import java.util.regex.Pattern;
 public class FileUtils {
 
     public static Pattern uuidFilePattern(String prefix, String suffix, String separator) {
-        return Pattern.compile(prefix + separator + "([\\w\\d\\-]+)" + separator + suffix);
+        return Pattern.compile(prefix + separator + "([a-zA-Z0-9\\-]+)" + separator + suffix);
     }
 }
