@@ -1,4 +1,4 @@
-package com.pungwe.db.engine.io.util;
+package com.pungwe.db.common.io;
 
 import java.io.DataInput;
 import java.io.DataInputStream;
@@ -146,5 +146,13 @@ public abstract class AbstractDataInput implements DataInput {
     @Override
     public void readFully(byte[] b) throws IOException {
         readFully(b, 0, b.length);
+    }
+
+    public long getPosition() {
+        return position.get();
+    }
+
+    public void setPosition(long position) {
+        this.position.set(position);
     }
 }

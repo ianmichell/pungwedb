@@ -1,4 +1,4 @@
-package com.pungwe.db.engine.io.util;
+package com.pungwe.db.common.io;
 
 import java.io.DataOutput;
 import java.io.IOException;

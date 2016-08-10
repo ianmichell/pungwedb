@@ -27,9 +27,14 @@ public final class ConfigSingleton extends AbstractMap<String, Object> {
         return ImmutableSet.copyOf(config.entrySet());
     }
 
+    @SuppressWarnings("unchecked")
     public ConfigSingleton load(InputStream in) throws IOException {
         Yaml yaml = new Yaml();
-        this.config = ImmutableMap.copyOf((Map<String, Object>)yaml.load(in));
+        Map<String, Object> configMap = (Map<String, Object>)yaml.load(in);
+        if (configMap == null) {
+            return this;
+        }
+        this.config = ImmutableMap.copyOf(configMap);
         return this;
     }
 

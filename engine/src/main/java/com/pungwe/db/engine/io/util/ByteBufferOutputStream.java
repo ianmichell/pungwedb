@@ -1,5 +1,7 @@
 package com.pungwe.db.engine.io.util;
 
+import com.pungwe.db.common.io.AbstractDataOutput;
+
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.OutputStream;

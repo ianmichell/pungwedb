@@ -21,10 +21,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -47,19 +45,27 @@ public class MemoryStore<E> {
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private Memory pointers;
+    private long[] freed = new long[0];
     private final Serializer<E> serializer;
     private final long capacity;
     private final AtomicLong used;
     private final AtomicLong position;
     private final AtomicLong size;
 
+    /**
+     *
+     * @param serializer
+     * @param capacity in megabytes
+     */
     public MemoryStore(Serializer<E> serializer, long capacity) {
         // Values are always serialized into memory...
         this.serializer = serializer;
         // set the capacity
-        this.capacity = capacity;
+        this.capacity = capacity << 20;
+        // Take 10 percent of the space...
+        this.pointers = new Memory(1 << 20);
         // Keeps track of the total amount of used memory...
-        this.used = new AtomicLong(0);
+        this.used = new AtomicLong(pointers.size());
         // Position of pointers
         this.position = new AtomicLong(0);
         // Set the size (number of records)
@@ -104,14 +110,13 @@ public class MemoryStore<E> {
             if (values.size() < 1) {
                 return new long[0];
             }
-            long[] free = findFreePointers();
             // Record ids to return...
             long[] ptrs = new long[values.size()];
             // If we have free pointers, then use them...
             int counter = 0;
             for (E value : values) {
-                if (counter < free.length) {
-                    ptrs[counter] = writeValue(free[counter], value);
+                if (counter < freed.length) {
+                    ptrs[counter] = writeValue(freed[counter], value);
                 } else {
                     ptrs[counter] = writeValue(value);
                 }
@@ -169,6 +174,9 @@ public class MemoryStore<E> {
                 int size = ptr.getInt(0) + 4;
                 // Free the memory!
                 Native.free(peer);
+                // Set freed
+                freed = Arrays.copyOf(freed, freed.length + 1);
+                freed[freed.length - 1] = offset;
                 // Now set pointers array element at idx to -1
                 pointers.setLong(offset, -1);
                 // Decrement used by the value size of the record...
@@ -189,25 +197,29 @@ public class MemoryStore<E> {
      * @throws IOException
      */
     private long[] findFreePointers() throws IOException {
-        // FIXME: Performance might be slow for REALLY big pointer arrays...
-        // Find all the positions that have -1 set...
-        List<Long> positions = new ArrayList<>();
-        for (long i = 0; i < position.get(); i+=8) {
-            long ptr = pointers.getLong(i);
-            if (ptr < 0) {
-                positions.add(i);
-            }
+        return freed;
+    }
+
+    private void increasePointerSize() throws IOException {
+        checkBounds(pointers.size() + (1 << 20));
+        // Create a new memory pointer...
+        Memory newPointer = new Memory((1 << 20) + pointers.size());
+        // Copy the values of pointers to new pointer
+        long read = 0;
+        while (read < pointers.size()) {
+            byte[] buffer = new byte[1 << 20];
+            pointers.read(read, buffer, 0, buffer.length);
+            newPointer.write(read, buffer, 0, buffer.length);
+            read += buffer.length;
         }
-        long[] free = new long[positions.size()];
-        for (int i = 0; i < free.length; i++) {
-            free[i] = positions.get(i);
-        }
-        return free;
+        used.getAndAdd(1 << 20);
+        pointers = newPointer;
     }
 
     private long writeValue(E value) throws IOException {
-        // Increase capacity
-        increasePointerCapacity(1);
+        if (position.get() >= pointers.size()) {
+            increasePointerSize();
+        }
         // Write the value to position
         long index = writeValue(position.get(), value);
         // Increase position by size of long
@@ -217,7 +229,6 @@ public class MemoryStore<E> {
     }
 
     private long writeValue(long offset, E value) throws IOException {
-        // FIXME: We should probably add a memory dataoutput and memorydatainput class...
         // Create a byte array to write the values...
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(bytes);
@@ -258,54 +269,10 @@ public class MemoryStore<E> {
         }
     }
 
-    /**
-     * Does what is says on the tin really... Expands pointers by the set amount.
-     *
-     * @param numPointers the number of 8 byte chunks of space to create...
-     */
-    private void increasePointerCapacity(long numPointers) throws IOException {
-        /*
-         * Allocate 8 bytes, for each record being added... Each record has an 8 byte pointer.
-         * This will ensure that memory can be referenced via pointer and the data retrieved via iterator...
-         *
-         * By using allocated memory, we can have very large lists of offsets stored within the this region.
-         * This will help with garbage collection, as we need to deallocate when this object goes to the GC.
-         * This will hopefully prevent memory leaks...
-         */
-        long size = numPointers * 8;
-        // Check bounds
-        checkBounds(size);
-        // If pointers is null, then this is a new memory store, so create a new pointer region...
-        if (pointers == null) {
-            pointers = new Memory(size);
-            // Increase used space by "size"
-            this.used.getAndAdd(size);
-            return;
-        }
-        if (position.get() < pointers.size()) {
-            System.out.println("Less than pointer size");
-            return;
-        }
-        // Otherwise expand it by size.
-        Memory newPointers = new Memory(pointers.size() + size);
-        long read = 0;
-        while (read < position.get()) {
-            long remaining = position.get() - read;
-            int bufSize = (int)Math.min(remaining, 4096);
-            byte[] buffer = new byte[bufSize];
-            pointers.read(read, buffer, 0, bufSize);
-            newPointers.write(read, buffer, 0, bufSize);
-            read += buffer.length;
-        }
-        // Clear old pointers...
-        pointers = newPointers;
-        // Set the amount of used space to size...
-        used.getAndAdd(size);
-    }
-
+    @SuppressWarnings("FinalizeDoesntCallSuperFinalize")
     @Override
     protected void finalize() throws Throwable {
-        // Free all the pointers... the Pointers array will free itself...
+        // Free all the pointers... the Pointers Memory will free itself...
         for (long i = 0; i < position.get(); i+=8) {
             long ptr = pointers.getLong(i);
             if (ptr > 0) {

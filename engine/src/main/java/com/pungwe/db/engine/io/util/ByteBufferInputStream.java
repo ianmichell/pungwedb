@@ -1,5 +1,7 @@
  package com.pungwe.db.engine.io.util;
 
+import com.pungwe.db.common.io.AbstractDataInput;
+
 import java.io.DataInput;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,7 +26,7 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
 
     @Override
     public synchronized void reset() throws IOException {
-        input.position.set(0);
+        input.setPosition(0);
     }
 
     @Override

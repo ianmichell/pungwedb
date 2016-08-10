@@ -13,10 +13,16 @@
  */
 package com.pungwe.db.common.io;
 
+import com.pungwe.db.core.io.serializers.ByteSerializer;
 import com.pungwe.db.core.io.serializers.StringSerializer;
+import com.pungwe.db.core.io.serializers.UUIDSerializer;
+import com.pungwe.db.core.utils.UUIDGen;
 import org.junit.Test;
 
+import java.util.UUID;
+
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 /**
  * Created by ian on 07/08/2016.
@@ -25,14 +31,14 @@ public class MemoryStoreTest {
 
     @Test
     public void testPutGet() throws Exception {
-        MemoryStore<String> memoryStore = new MemoryStore<>(new StringSerializer(), 1 << 20);
+        MemoryStore<String> memoryStore = new MemoryStore<>(new StringSerializer(), 2);
         long idx = memoryStore.put("Hello World");
         assertEquals("Hello World", memoryStore.get(idx));
     }
 
     @Test
     public void testPutGetRemove() throws Exception {
-        MemoryStore<String> memoryStore = new MemoryStore<>(new StringSerializer(), 1 << 20);
+        MemoryStore<String> memoryStore = new MemoryStore<>(new StringSerializer(), 2);
         long idx = memoryStore.put("Hello World");
         assertEquals("Hello World", memoryStore.get(idx));
         long idx2 = memoryStore.put("Hello World 2");
@@ -41,5 +47,16 @@ public class MemoryStoreTest {
         long idx3 = memoryStore.put("Hello World 3");
         assertEquals(idx, idx3);
         assertEquals("Hello World 3", memoryStore.get(idx3));
+    }
+
+    @Test
+    public void testLargePut() throws Exception {
+        MemoryStore<byte[]> memoryStore = new MemoryStore<>(new ByteSerializer(), 3);
+        for (int i = 0; i < 10000; i++) {
+            memoryStore.put(new byte[100]);
+        }
+        for (int i = 0; i < 10000; i++) {
+            assertNotNull(memoryStore.get(i));
+        }
     }
 }
