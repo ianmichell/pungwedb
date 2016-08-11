@@ -83,6 +83,7 @@ public class NativeMemoryAllocatorTest {
 
     @Test
     public void testAllocateAndWait() throws Exception {
+        NativeMemoryAllocator.getInstance().purgeAll();
         Allocator.AllocatedMemory memory = NativeMemoryAllocator.getInstance().acquire(100 << 20);
         Promise<Allocator.AllocatedMemory> p = Promise.build(new TypeReference<Allocator.AllocatedMemory>() {})
                 .given(() -> NativeMemoryAllocator.getInstance().acquire(100 << 20, 10, TimeUnit.SECONDS)).promise();
@@ -127,14 +128,14 @@ public class NativeMemoryAllocatorTest {
         }
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test(expected = IOException.class)
     public void testGetOutputClosed() throws Exception {
         Allocator.AllocatedMemory memory = NativeMemoryAllocator.getInstance().acquire(100 << 20);
         memory.close();
         memory.getDataOutput();
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test(expected = IOException.class)
     public void testGetInputClosed() throws Exception {
         Allocator.AllocatedMemory memory = NativeMemoryAllocator.getInstance().acquire(100 << 20);
         memory.close();

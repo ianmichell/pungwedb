@@ -123,14 +123,14 @@ public class HeapMemoryAllocatorTest {
         }
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test(expected = IOException.class)
     public void testGetOutputClosed() throws Exception {
         Allocator.AllocatedMemory memory = HeapMemoryAllocator.getInstance().acquire(100 << 20);
         memory.close();
         memory.getDataOutput();
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test(expected = IOException.class)
     public void testGetInputClosed() throws Exception {
         Allocator.AllocatedMemory memory = HeapMemoryAllocator.getInstance().acquire(100 << 20);
         memory.close();
@@ -153,14 +153,14 @@ public class HeapMemoryAllocatorTest {
         input.readFully(new byte[100]);
     }
 
-    @Test(expected = IOException.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testGetOutputWriteInvalid() throws Exception {
         Allocator.AllocatedMemory memory = HeapMemoryAllocator.getInstance().acquire(100 << 20);
         DataOutput output = memory.getDataOutput();
         output.write(new byte[100], 100, 10);
     }
 
-    @Test(expected = IOException.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testGetInputReadInvalid() throws Exception {
         Allocator.AllocatedMemory memory = HeapMemoryAllocator.getInstance().acquire(100 << 20);
         DataInput input = memory.getDataInput();

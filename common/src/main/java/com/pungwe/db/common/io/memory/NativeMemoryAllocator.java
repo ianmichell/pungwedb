@@ -133,6 +133,9 @@ public final class NativeMemoryAllocator implements Allocator {
             long size = memory.getSize();
             memory.forceClose();
             used.getAndAdd(-size);
+            if (references.remove(memory) == null) {
+                throw new IOException("Could not remove reference to memory");
+            }
         } finally {
             allocationLock.unlock();
         }
@@ -142,11 +145,13 @@ public final class NativeMemoryAllocator implements Allocator {
     public void purgeAll() throws IOException {
         allocationLock.lock();
         try {
-            for (AllocatedMemory memory : references.keySet()) {
-                long size = memory.getSize();
-                memory.forceClose();
-                used.getAndAdd(-size);
+            for (Map.Entry<NativeAllocatedMemory, WeakReference<NativeAllocatedMemory>> entry : references.entrySet()) {
+                long size = entry.getKey().getSize();
+                entry.getKey().forceClose();
+                entry.getValue().clear();
             }
+            references.clear();
+            used.set(0);
         } finally {
             allocationLock.unlock();
         }
@@ -169,7 +174,7 @@ public final class NativeMemoryAllocator implements Allocator {
 
         @Override
         public long getSize() {
-            return memory.size();
+            return memory == null ? 0 : memory.size();
         }
 
         @Override
@@ -202,17 +207,17 @@ public final class NativeMemoryAllocator implements Allocator {
         }
 
         @Override
-        public DataInput getDataInput(long position) {
+        public DataInput getDataInput(long position) throws IOException {
             if (closed.get()) {
-                throw new IllegalArgumentException("Allocated memory has been freed");
+                throw new IOException("Allocated memory has been freed");
             }
             return new NativeMemoryDataInput(this, position);
         }
 
         @Override
-        public DataOutput getDataOutput(long position) {
+        public DataOutput getDataOutput(long position) throws IOException {
             if (closed.get()) {
-                throw new IllegalArgumentException("Allocated memory has been freed");
+                throw new IOException("Allocated memory has been freed");
             }
             return new NativeMemoryDataOutput(this, position);
         }
@@ -229,7 +234,7 @@ public final class NativeMemoryAllocator implements Allocator {
 
         @Override
         public int hashCode() {
-            return memory.hashCode();
+            return memory == null ? Integer.MIN_VALUE : memory.hashCode();
         }
     }
 

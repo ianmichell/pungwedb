@@ -71,6 +71,9 @@ public class HeapMemoryAllocator implements Allocator {
 
     @Override
     public AllocatedMemory tryAcquire(long size) throws IOException {
+        if (size > capacity) {
+            throw new IllegalArgumentException("Requested amount of memory is greater than the capacity");
+        }
         if (!allocationLock.tryLock()) {
             return null;
         }
@@ -84,6 +87,7 @@ public class HeapMemoryAllocator implements Allocator {
             ByteBuffer buffer = ByteBuffer.allocate((int)size);
             HeapAllocatedMemory memory = new HeapAllocatedMemory(buffer);
             references.put(memory, new WeakReference<>(memory));
+            used.getAndAdd(size);
             return memory;
         } finally {
             if (allocationLock.isHeldByCurrentThread()) {
@@ -163,7 +167,10 @@ public class HeapMemoryAllocator implements Allocator {
         }
 
         @Override
-        public DataInput getDataInput(long position) {
+        public DataInput getDataInput(long position) throws IOException {
+            if (isClosed()) {
+                throw new IOException("Memory has already been freed");
+            }
             if (position > getSize()) {
                 throw new IllegalArgumentException("Offset cannot be greater than capacity");
             }
@@ -171,7 +178,10 @@ public class HeapMemoryAllocator implements Allocator {
         }
 
         @Override
-        public DataOutput getDataOutput(long position) {
+        public DataOutput getDataOutput(long position) throws IOException {
+            if (isClosed()) {
+                throw new IOException("Memory has already been freed");
+            }
             if (position > getSize()) {
                 throw new IllegalArgumentException("Offset cannot be greater than capacity");
             }
@@ -208,6 +218,9 @@ public class HeapMemoryAllocator implements Allocator {
 
         @Override
         public void readFully(byte[] b, int off, int len) throws IOException {
+            if (memory.isClosed()) {
+                throw new IOException("Memory has been freed");
+            }
             int size = len - off;
             if (size < 0) {
                 throw new IllegalArgumentException("You cannot have an offset greater than length");
@@ -238,6 +251,9 @@ public class HeapMemoryAllocator implements Allocator {
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
+            if (memory.isClosed()) {
+                throw new IOException("Memory has been freed");
+            }
             int size = len - off;
             if (size < 0) {
                 throw new IllegalArgumentException("You cannot have an offset greater than length");

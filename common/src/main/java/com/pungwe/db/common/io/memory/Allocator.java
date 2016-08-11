@@ -209,7 +209,7 @@ public interface Allocator {
          * @throws IllegalArgumentException if position is greater than the size of the allocated memory, or it has been
          * closed
          */
-        default DataInput getDataInput() {
+        default DataInput getDataInput() throws IOException {
             return getDataInput(0);
         }
 
@@ -221,7 +221,7 @@ public interface Allocator {
          * @throws IllegalArgumentException if position is greater than the size of the allocated memory, or it has been
          * closed
          */
-        default DataOutput getDataOutput() {
+        default DataOutput getDataOutput() throws IOException {
             return getDataOutput(0);
         }
 
@@ -235,7 +235,7 @@ public interface Allocator {
          * @throws IllegalArgumentException if position is greater than the size of the allocated memory, or it has been
          * closed
          */
-        DataInput getDataInput(long position);
+        DataInput getDataInput(long position) throws IOException;
 
         /**
          * DataOutput for writing to memory
@@ -247,7 +247,7 @@ public interface Allocator {
          * @throws IllegalArgumentException if position is greater than the size of the allocated memory, or it has been
          * closed
          */
-        DataOutput getDataOutput(long position);
+        DataOutput getDataOutput(long position) throws IOException;
 
         /**
          * Doesn't attempt to wait for a write lock and simply frees the memory.
