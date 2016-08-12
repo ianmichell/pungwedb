@@ -39,6 +39,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * @param <E> the type of object being stored in memory...
  */
+@Deprecated
 public class MemoryStore<E> {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryStore.class);
