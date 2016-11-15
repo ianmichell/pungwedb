@@ -310,7 +310,7 @@ public class MemoryBTreeMap<K, V> extends AbstractBTreeMap<K, V> {
             // Return the most appropriate offset.
             int sizeToWrite = (int) Math.min((size - written), memory.remaining());
             // Write data to first segment
-            out.write(data, 0, sizeToWrite);
+            out.write(bytes, 0, sizeToWrite);
         }
     }
 
